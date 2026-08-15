@@ -41,12 +41,18 @@ class VisionAnalyzer(Protocol):
         """What to record on the detection, so evidence says which model judged it."""
         ...
 
-    async def prefilter(self, image: bytes) -> bool:
+    async def prefilter(self, image: bytes, frame: Frame, camera: Camera) -> bool:
         """Cheap yes/no: is anything anomalous here at all?
 
         Most frames of a road are an empty road. This kills the majority of them
-        for near-zero cost before the expensive model ever sees one. Returning
-        True always is a valid implementation -- it just costs more.
+        for near-zero cost before the expensive model ever sees one.
+
+        The contract that matters is **high recall, not high precision**. Letting
+        an ordinary frame through wastes a fraction of a cent; discarding a frame
+        with a hazard in it loses the hazard entirely, and no later stage can
+        recover it. Implementations should err heavily toward passing.
+
+        Returning True always is a valid implementation. It just costs more.
         """
         ...
 

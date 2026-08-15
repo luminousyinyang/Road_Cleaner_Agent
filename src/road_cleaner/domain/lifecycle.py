@@ -17,8 +17,14 @@ from __future__ import annotations
 from datetime import datetime
 
 from road_cleaner.domain.enums import CaseKind, GateDecision, HazardType
-from road_cleaner.domain.models import Case, Filing
+from road_cleaner.domain.models import Case, Filing, GateResult
 from road_cleaner.domain.sla import due_tier
+
+# How long after a case closes the same camera+hazard is still considered the
+# same situation rather than a new one. Without this, a suppressed or cleared
+# case gets re-opened on the very next poll and the log fills with duplicates
+# of one hazard.
+RECURRENCE_COOLDOWN_HOURS = 6
 
 
 def correlation_key(camera_id: str, hazard_type: HazardType) -> str:
@@ -45,15 +51,21 @@ def derive_kind(
 ) -> CaseKind:
     """Work out what state a case is in, from what has actually happened to it.
 
-    Order matters. Cleared beats everything -- a fixed road is a fixed road even
-    if the paperwork was late. Suppressed is next, because a case we decided not
-    to report never enters the filed/overdue lifecycle at all.
+    Order matters, and the middle branch is easy to get wrong. An explicit
+    clearance from the Auditor beats everything -- a fixed road is fixed even if
+    the paperwork ran late. But suppression has to be checked *before* the
+    generic `closed_at`, because suppressing a case also closes it: without this
+    ordering every "we stayed quiet, they already knew" case would misreport
+    itself as "we got this fixed", which is close to the opposite of the truth.
     """
-    if cleared or case.closed_at is not None:
+    if cleared:
         return CaseKind.CLEARED
 
     if case.gate_decision is GateDecision.SUPPRESS:
         return CaseKind.SUPPRESSED
+
+    if case.closed_at is not None:
+        return CaseKind.CLEARED
 
     if not filings:
         return CaseKind.WATCHING
@@ -64,12 +76,22 @@ def derive_kind(
     return CaseKind.FILED
 
 
-def should_open_case(decision: GateDecision) -> bool:
-    """Is this decision worth a case at all?
+def should_open_case(result: GateResult) -> bool:
+    """Is this worth opening a case for?
 
-    DROP means we looked and convinced ourselves there was nothing there; it
-    leaves a log line but no case. Everything else is worth a record, including
-    SUPPRESS -- "we saw this and deliberately said nothing" is exactly the kind
-    of decision that should be on the record rather than invisible.
+    Two conditions, and the second one matters more than it looks:
+
+    * not a DROP -- we looked and convinced ourselves there was nothing there
+    * **corroborated by a second frame**
+
+    Without the corroboration requirement, every single-frame false positive
+    becomes a case. A vision model glancing at thousands of frames an hour will
+    occasionally call a shadow debris, and if each of those opened a case, the
+    road log would be mostly noise and the "watching" bucket would be
+    meaningless. A single unconfirmed frame gets a log line and nothing more.
+
+    Cases that do survive this are the honest ones: something was seen twice,
+    at least ninety seconds apart. Whether it then gets filed is the confidence
+    bar's business, not this function's.
     """
-    return decision is not GateDecision.DROP
+    return result.decision is not GateDecision.DROP and bool(result.corroborating_ids)

@@ -224,9 +224,10 @@ class SqliteCaseRepository:
                (id, camera_id, state, kind, hazard_type, hazard_title, location,
                 severity, confidence, opened_at, updated_at, closed_at, gate_decision,
                 gate_reason, agency_id, agency_name, channel, reference, ref_label,
-                sla_deadline, escalation_tier, sentence, explain, detection_ids,
+                sla_deadline, escalation_tier, last_checked_at, next_check_at,
+                checks_done, sentence, explain, detection_ids,
                 frame_refs, raw_model_json, box, box_label)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(id) DO UPDATE SET
                    kind=excluded.kind, severity=excluded.severity,
                    confidence=excluded.confidence, updated_at=excluded.updated_at,
@@ -235,7 +236,10 @@ class SqliteCaseRepository:
                    agency_name=excluded.agency_name, channel=excluded.channel,
                    reference=excluded.reference, ref_label=excluded.ref_label,
                    sla_deadline=excluded.sla_deadline,
-                   escalation_tier=excluded.escalation_tier, sentence=excluded.sentence,
+                   escalation_tier=excluded.escalation_tier,
+                   last_checked_at=excluded.last_checked_at,
+                   next_check_at=excluded.next_check_at,
+                   checks_done=excluded.checks_done, sentence=excluded.sentence,
                    explain=excluded.explain, detection_ids=excluded.detection_ids,
                    frame_refs=excluded.frame_refs, raw_model_json=excluded.raw_model_json,
                    box=excluded.box, box_label=excluded.box_label,
@@ -248,7 +252,9 @@ class SqliteCaseRepository:
                 case.gate_decision.value, case.gate_reason, case.agency_id,
                 case.agency_name, case.channel.value if case.channel else None,
                 case.reference, case.ref_label, _iso(case.sla_deadline),
-                case.escalation_tier, case.sentence, case.explain,
+                case.escalation_tier, _iso(case.last_checked_at),
+                _iso(case.next_check_at), case.checks_done,
+                case.sentence, case.explain,
                 json.dumps(case.detection_ids),
                 json.dumps([json.loads(f.model_dump_json()) for f in case.frame_refs]),
                 case.raw_model_json,
@@ -269,7 +275,11 @@ class SqliteCaseRepository:
             agency_name=row["agency_name"], channel=row["channel"],
             reference=row["reference"], ref_label=row["ref_label"],
             sla_deadline=_dt(row["sla_deadline"]),
-            escalation_tier=row["escalation_tier"], sentence=row["sentence"],
+            escalation_tier=row["escalation_tier"],
+            last_checked_at=_dt(row["last_checked_at"]),
+            next_check_at=_dt(row["next_check_at"]),
+            checks_done=row["checks_done"],
+            sentence=row["sentence"],
             explain=row["explain"], detection_ids=json.loads(row["detection_ids"]),
             frame_refs=[FrameRef(**f) for f in json.loads(row["frame_refs"])],
             raw_model_json=row["raw_model_json"],
@@ -309,6 +319,29 @@ class SqliteCaseRepository:
                WHERE correlation_key = ? AND kind IN ('watching','filed','escalated')
                ORDER BY opened_at DESC LIMIT 1""",
             (correlation_key,),
+        )
+        return self._case(row) if row else None
+
+    async def find_recent_case(self, correlation_key: str, since: datetime) -> Case | None:
+        """The case for this camera+hazard, open or recently closed.
+
+        Closed cases have to be findable too. A suppressed hazard is still on the
+        road being detected every couple of minutes, and a hazard that just
+        cleared may flicker back for a poll or two. If only open cases matched,
+        each of those re-detections would allocate a brand new case id and the
+        road log would fill with hundreds of copies of one problem.
+
+        Open cases win over closed ones of the same age.
+        """
+        row = await self._read_one(
+            """SELECT * FROM cases
+               WHERE correlation_key = ?
+                 AND (kind IN ('watching','filed','escalated') OR updated_at >= ?)
+               ORDER BY
+                 CASE WHEN kind IN ('watching','filed','escalated') THEN 0 ELSE 1 END,
+                 updated_at DESC
+               LIMIT 1""",
+            (correlation_key, since.isoformat()),
         )
         return self._case(row) if row else None
 

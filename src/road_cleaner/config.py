@@ -143,10 +143,14 @@ class Settings(BaseSettings):
     poll_seconds_quiet: int = Field(default=600, alias="POLL_SECONDS_QUIET")
     poll_seconds_active: int = Field(default=60, alias="POLL_SECONDS_ACTIVE")
     auditor_interval_seconds: int = Field(default=3600, alias="AUDITOR_INTERVAL_SECONDS")
-    # Frames whose perceptual hash differs by <= this are treated as identical
-    # and never reach the vision model. Calibrated at 1: repeats score 0, a
-    # newly-appeared hazard scores 2. See `adapters/camera/scene.phash`.
-    phash_identical_threshold: int = Field(default=1, alias="PHASH_IDENTICAL_THRESHOLD")
+    # Frames within this hash distance are treated as identical and skipped.
+    # 0 means "only literally identical frames" -- which is the only thing an
+    # average hash can honestly detect. See `adapters/camera/scene.phash`.
+    phash_identical_threshold: int = Field(default=0, alias="PHASH_IDENTICAL_THRESHOLD")
+    # Safety net: however many identical frames arrive, analyze one every this
+    # many polls anyway. Without it, a static scene containing a hazard would be
+    # skipped forever and never detected at all.
+    max_consecutive_skips: int = Field(default=10, alias="MAX_CONSECUTIVE_SKIPS")
 
     # --------------------------------------------------------------- web
     web_host: str = Field(default="127.0.0.1", alias="WEB_HOST")

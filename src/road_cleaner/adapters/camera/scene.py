@@ -20,8 +20,9 @@ import io
 import math
 import random
 from dataclasses import dataclass
+from functools import lru_cache
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 from road_cleaner.domain.enums import HazardType
 from road_cleaner.domain.models import BoundingBox
@@ -117,8 +118,10 @@ def render(spec: SceneSpec) -> tuple[bytes, BoundingBox | None]:
     if spec.hazard is not None:
         box = _draw_hazard(draw, spec)
 
-    _draw_grain(image, rng, spec)
-    _draw_overlay(draw, spec)
+    # Grain goes on before the burn-in overlay, so the timestamp stays crisp the
+    # way it does on a real camera that draws text after capture.
+    image = _apply_grain(image, spec)
+    _draw_overlay(ImageDraw.Draw(image), spec)
 
     buffer = io.BytesIO()
     image.save(buffer, format="JPEG", quality=82)
@@ -218,20 +221,34 @@ def _draw_hazard(draw: ImageDraw.ImageDraw, spec: SceneSpec) -> BoundingBox:
     )
 
 
-def _draw_grain(image: Image.Image, rng: random.Random, spec: SceneSpec) -> None:
-    """Sensor noise. Heavier at night, which is exactly when real cameras get
-    hard to read and when detections should be trusted less."""
-    amount = {"day": 500, "dusk": 1400, "rain": 2200, "night": 3600}.get(spec.lighting, 500)
-    pixels = image.load()
-    for _ in range(amount):
-        x, y = rng.randrange(WIDTH), rng.randrange(HEIGHT)
-        r, g, b = pixels[x, y]
-        shift = rng.randint(-26, 26)
-        pixels[x, y] = (
-            max(0, min(255, r + shift)),
-            max(0, min(255, g + shift)),
-            max(0, min(255, b + shift)),
-        )
+# How strong the sensor noise is, per lighting condition. Night frames are
+# genuinely grainier, which is why the analyzer trusts them less.
+GRAIN_AMPLITUDE = {"day": 4, "dusk": 10, "rain": 14, "night": 20}
+
+# A small pool of pre-generated noise layers, picked by seed. Generating noise
+# per frame in Python costs ~5ms and dominated the whole render; this makes it
+# free after the first call while staying deterministic.
+_NOISE_VARIANTS = 8
+
+
+@lru_cache(maxsize=64)
+def _noise_layer(amplitude: int, variant: int) -> Image.Image:
+    """A reproducible noise layer centred on 128."""
+    rng = random.Random(f"noise:{amplitude}:{variant}")
+    raw = rng.randbytes(WIDTH * HEIGHT)
+    layer = Image.frombytes("L", (WIDTH, HEIGHT), raw)
+    # Compress the full 0..255 range down to 128 +/- amplitude. `point` builds a
+    # 256-entry lookup table, so this runs at C speed rather than per pixel.
+    return layer.point(lambda v: 128 + int((v - 128) * amplitude / 128)).convert("RGB")
+
+
+def _apply_grain(image: Image.Image, spec: SceneSpec) -> Image.Image:
+    amplitude = GRAIN_AMPLITUDE.get(spec.lighting, 4)
+    if amplitude <= 0:
+        return image
+    layer = _noise_layer(amplitude, spec.seed % _NOISE_VARIANTS)
+    # (image + layer) - 128, clamped: adds signed noise around zero.
+    return ImageChops.add(image, layer, scale=1, offset=-128)
 
 
 def _draw_overlay(draw: ImageDraw.ImageDraw, spec: SceneSpec) -> None:
@@ -245,25 +262,29 @@ def _draw_overlay(draw: ImageDraw.ImageDraw, spec: SceneSpec) -> None:
 def phash(image_bytes: bytes, hash_size: int = 16) -> str:
     """Perceptual hash, for spotting frames that are *identical* to the last one.
 
-    Worth being precise about what this does and does not do, because it is easy
-    to expect too much of it. It cannot see a tire in a lane -- no average hash
-    can; a small object is far too little of the frame to shift the bits. What it
-    reliably catches is a frame that has not changed at all: a camera returning a
-    cached image, a frozen feed, or a genuinely still scene at 4am.
+    Be precise about what this does, because it is tempting to expect far more
+    of it than it can deliver. Measured on the fixture cameras:
 
-    Measured on the fixture cameras at 16x16, the separation is clean:
+        identical frame            -> distance 0
+        traffic moved, no hazard   -> large
+        hazard appeared, same cars -> ~0
 
-        identical frame          -> distance 0
-        hazard appears           -> distance 2
-        hazard persists (+grain) -> distance 3
+    In other words: **frame differencing cannot see a hazard.** A shed tire is a
+    few hundred pixels of a 640x360 frame, and ordinary traffic movement swamps
+    it completely. Any scheme that skips "unchanged" frames on the strength of a
+    hash and calls that hazard filtering is silently throwing away the exact
+    frames the system exists to find.
 
-    So a threshold of 1 skips repeats while letting a newly-appeared hazard
-    through, and lets a persisting hazard through again so the gate can get its
-    second confirming frame.
+    So this is used for one narrow, honest purpose: detecting a frame that is
+    *identical* to the previous one, which means a frozen feed or a camera
+    serving a cached image. Threshold 0. Nothing else.
 
-    The real cost reduction comes from the prefilter downstream, not from here.
-    This is the cheap first line: it costs a downscale-and-compare and it means a
-    dead camera never bills us for vision calls.
+    Even that needs a safety net, because a genuinely static scene would
+    otherwise be skipped forever -- see `max_consecutive_skips` in the Watcher,
+    which forces a look every so often regardless.
+
+    The real cost reduction comes from the prefilter downstream. This just stops
+    a dead camera from billing us.
     """
     with Image.open(io.BytesIO(image_bytes)) as img:
         small = img.convert("L").resize((hash_size, hash_size), Image.Resampling.LANCZOS)

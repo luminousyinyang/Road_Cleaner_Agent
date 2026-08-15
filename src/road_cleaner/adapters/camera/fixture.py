@@ -18,13 +18,13 @@ import random
 from datetime import datetime
 from pathlib import Path
 
+from road_cleaner.adapters.camera.scenarios import ScenarioBook
 from road_cleaner.adapters.camera.scene import (
     SceneSpec,
     lighting_for_hour,
     render,
     traffic_for_hour,
 )
-from road_cleaner.adapters.camera.scenarios import ScenarioBook
 from road_cleaner.domain.enums import CameraTier
 from road_cleaner.domain.models import Camera, OfficialEvent
 from road_cleaner.logging import get_logger

@@ -21,12 +21,12 @@ import json
 import random
 from datetime import datetime
 
-from road_cleaner.adapters.camera.scene import lighting_for_hour
 from road_cleaner.adapters.camera.scenarios import (
     ScenarioBook,
     observed_confidence,
     spurious_detection,
 )
+from road_cleaner.adapters.camera.scene import lighting_for_hour
 from road_cleaner.domain.enums import HazardType, Severity
 from road_cleaner.domain.models import BoundingBox, Camera, Detection, Frame
 from road_cleaner.ports.vision import ClearanceCheck
@@ -52,21 +52,30 @@ class ScriptedVisionAnalyzer:
     def model_name(self) -> str:
         return "scripted"
 
-    async def prefilter(self, image: bytes) -> bool:
-        """The cheap first pass.
+    async def prefilter(self, image: bytes, frame: Frame, camera: Camera) -> bool:
+        """The cheap first pass, modelled on how a small vision model behaves.
 
-        Deliberately generous: it lets through everything genuinely anomalous
-        plus a slice of ordinary frames, which is what a small model actually
-        does. Being wrong here in the permissive direction costs a little money;
-        being wrong in the strict direction costs a missed hazard.
+        High recall, mediocre precision: every frame that genuinely contains a
+        hazard passes, along with roughly a quarter of ordinary ones. That is the
+        shape a real prefilter has to have -- it exists to save money on empty
+        roads, and a frame it wrongly discards is a hazard nobody ever sees.
+
+        (An earlier version seeded its RNG on `image[:64]`, which is the JPEG
+        header and identical for every frame -- so every frame got the same
+        verdict and the entire pipeline silently detected nothing. Hence seeding
+        on the frame's perceptual hash, which actually varies.)
         """
         self.frames_seen += 1
         if not self.prefilter_enabled:
             return True
-        # The prefilter cannot see the scenario book -- it only has the bytes --
-        # so it approximates: anomalous frames are busier and hash differently.
-        rng = random.Random(image[:64])
-        passed = rng.random() < 0.35
+
+        # A hazard is present -> a real prefilter would flag it. Always pass.
+        if self.scenarios.active_for(camera.id, frame.captured_at) is not None:
+            return True
+
+        # Otherwise let through about a quarter, deterministically per frame.
+        rng = random.Random(frame.phash or frame.id)
+        passed = rng.random() < 0.25
         if not passed:
             self.frames_killed_by_prefilter += 1
         return passed

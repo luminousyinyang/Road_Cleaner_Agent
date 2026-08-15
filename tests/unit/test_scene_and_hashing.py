@@ -80,28 +80,43 @@ class TestRendering:
 
 
 class TestPerceptualHash:
+    """What the hash can and cannot do.
+
+    These tests exist mostly to pin down a limitation, so nobody later "optimises"
+    the Watcher by trusting the hash further than it deserves.
+    """
+
     def test_identical_frames_hash_identically(self):
         a, _ = render(spec())
         b, _ = render(spec())
         assert hamming_distance(phash(a), phash(b)) == 0
 
     def test_a_repeat_frame_is_treated_as_unchanged(self):
-        """The saving: a frozen or unchanging feed costs no vision calls."""
+        """The only saving this actually delivers: a frozen feed costs nothing."""
         a, _ = render(spec())
         b, _ = render(spec())
         assert hamming_distance(phash(a), phash(b)) <= PHASH_THRESHOLD
 
-    def test_a_newly_appeared_hazard_is_not_treated_as_unchanged(self):
-        """The critical one. If this fails, hazard frames get silently dropped."""
+    def test_the_hash_cannot_see_a_hazard(self):
+        """Documented limitation, asserted so it stays documented.
+
+        A hazard appearing while traffic holds still is invisible to an average
+        hash. This is why `PHASH_IDENTICAL_THRESHOLD` is 0 and why the Watcher
+        caps consecutive skips -- if this were relied on as a hazard filter, the
+        system would silently discard the frames it exists to analyse.
+        """
         clear, _ = render(spec())
         hazard, _ = render(spec(hazard=HazardType.DEBRIS))
-        assert hamming_distance(phash(clear), phash(hazard)) > PHASH_THRESHOLD
+        assert hamming_distance(phash(clear), phash(hazard)) == 0
 
-    def test_a_persisting_hazard_still_passes_through(self):
-        """The gate needs a second frame to confirm, so repeats must not be eaten."""
-        first, _ = render(spec(hazard=HazardType.DEBRIS, seed=1))
-        second, _ = render(spec(hazard=HazardType.DEBRIS, seed=2))
-        assert hamming_distance(phash(first), phash(second)) > PHASH_THRESHOLD
+    def test_ordinary_traffic_movement_dominates_the_signal(self):
+        """Traffic moving changes the hash far more than a hazard appearing does."""
+        clear, _ = render(spec(seed=1))
+        moved, _ = render(spec(seed=2))
+        hazard, _ = render(spec(seed=1, hazard=HazardType.DEBRIS))
+        traffic_delta = hamming_distance(phash(clear), phash(moved))
+        hazard_delta = hamming_distance(phash(clear), phash(hazard))
+        assert traffic_delta > hazard_delta
 
     def test_hash_length_is_stable(self):
         data, _ = render(spec())

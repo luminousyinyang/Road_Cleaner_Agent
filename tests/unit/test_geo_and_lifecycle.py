@@ -4,11 +4,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from road_cleaner.domain.enums import CaseKind, GateDecision, HazardType
+from road_cleaner.domain.enums import CaseKind, Channel, GateDecision, HazardType
 from road_cleaner.domain.geo import format_distance, haversine_meters, within_meters
 from road_cleaner.domain.lifecycle import correlation_key, derive_kind, should_open_case
-from road_cleaner.domain.models import Case, Filing
-from road_cleaner.domain.enums import Channel
+from road_cleaner.domain.models import Case, Filing, GateResult
 
 T0 = datetime(2026, 8, 3, 14, 0, 0, tzinfo=UTC)
 
@@ -114,12 +113,41 @@ class TestDeriveKind:
 
 
 class TestShouldOpenCase:
+    @staticmethod
+    def result(decision: GateDecision, corroborated: bool = True) -> GateResult:
+        return GateResult(
+            decision=decision,
+            reason="",
+            mean_confidence=0.9,
+            corroborating_ids=["d0"] if corroborated else [],
+        )
+
     def test_drop_leaves_no_case(self):
-        assert should_open_case(GateDecision.DROP) is False
+        assert should_open_case(self.result(GateDecision.DROP)) is False
 
     @pytest.mark.parametrize(
         "decision", [GateDecision.FILE, GateDecision.WATCH, GateDecision.SUPPRESS]
     )
-    def test_everything_else_is_worth_a_record(self, decision):
+    def test_corroborated_decisions_are_worth_a_record(self, decision):
         """'We saw this and said nothing' belongs on the record too."""
-        assert should_open_case(decision) is True
+        assert should_open_case(self.result(decision)) is True
+
+    @pytest.mark.parametrize(
+        "decision", [GateDecision.FILE, GateDecision.WATCH, GateDecision.SUPPRESS]
+    )
+    def test_a_single_unconfirmed_frame_opens_nothing(self, decision):
+        """Otherwise every false positive becomes a case and the log is noise."""
+        assert should_open_case(self.result(decision, corroborated=False)) is False
+
+
+class TestSuppressedVsCleared:
+    def test_suppression_does_not_masquerade_as_a_fix(self):
+        """Suppressing closes the case; it must not read as 'we got this fixed'."""
+        case = make_case(
+            gate_decision=GateDecision.SUPPRESS, closed_at=T0 + timedelta(minutes=1)
+        )
+        assert derive_kind(case, [], T0 + timedelta(hours=1)) is CaseKind.SUPPRESSED
+
+    def test_an_explicit_clearance_still_wins(self):
+        case = make_case(gate_decision=GateDecision.SUPPRESS)
+        assert derive_kind(case, [], T0, cleared=True) is CaseKind.CLEARED

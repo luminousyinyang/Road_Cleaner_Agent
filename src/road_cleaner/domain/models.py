@@ -239,6 +239,13 @@ class Case(Base):
     sla_deadline: datetime | None = None
     escalation_tier: int = 0
 
+    # Re-check scheduling. `next_check_at` decays as a case ages, so a two-week
+    # guardrail repair is not re-examined every minute -- but an overdue case is
+    # checked harder, not less.
+    last_checked_at: datetime | None = None
+    next_check_at: datetime | None = None
+    checks_done: int = 0
+
     # Plain-English copy shown to a reader. Generated in `narrative.py` from
     # the detection, never written by hand.
     sentence: str = ""
@@ -256,7 +263,14 @@ class Case(Base):
 
     @property
     def was_filed(self) -> bool:
-        return self.kind in (CaseKind.FILED, CaseKind.ESCALATED) or self.reference is not None
+        """Did a report actually go to an agency?
+
+        Keyed on `agency_id` rather than on `reference`, because a suppressed
+        case carries the reference "duplicate" as a display label -- and
+        treating that as evidence of a filing makes suppressed cases claim an
+        agency they were never sent to.
+        """
+        return self.agency_id is not None
 
     @property
     def state_code(self) -> str:

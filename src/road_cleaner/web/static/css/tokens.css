@@ -1,0 +1,116 @@
+/* Design tokens, ported from design_artifacts/road-cleaner.dc.html.
+ *
+ * The comps carry two deliberate registers: the road log is a warm, papery
+ * "field notebook" (Instrument Serif + JetBrains Mono on off-white, hard offset
+ * shadows), and the how-it-works page is a heavier editorial voice (Overpass +
+ * Zilla Slab, forest green). Both are kept -- the shift is intentional, not an
+ * inconsistency to be tidied away.
+ */
+
+:root {
+  /* --- road log palette --- */
+  --paper: #FAFAF8;
+  --ink: #1A1A18;
+  --ink-2: #45453F;
+  --muted: #6B6B65;
+  --muted-2: #8A8A82;
+  --rule: #E6E5DF;
+  --rule-2: #DEDDD5;
+  --card: #FFFFFF;
+
+  /* --- accents --- */
+  --rust: #B4451F;
+  --amber: #D9A227;
+  --green: #2F7A4F;
+  --olive: #8A6A10;
+  --gray: #9A9A92;
+  --forest: #0F5340;
+  --orange: #E2622B;
+  --yellow: #F2C230;
+  --green-soft: #9CC0A9;
+
+  /* --- case kind -> tone (matches TONE in the comp) --- */
+  --tone-filed: #2F7A4F;
+  --tone-escalated: #B4451F;
+  --tone-watching: #8A6A10;
+  --tone-cleared: #6B6B65;
+  --tone-suppressed: #9A9A92;
+
+  /* --- about page register --- */
+  --about-paper: #F6F6F3;
+  --about-ink: #1B1C1A;
+  --about-body: #454741;
+  --about-rule: #DCDDD7;
+
+  /* --- type --- */
+  --sans: 'Instrument Sans', system-ui, -apple-system, sans-serif;
+  --serif: 'Instrument Serif', Georgia, serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --display: 'Overpass', system-ui, sans-serif;
+  --slab: 'Zilla Slab', Georgia, serif;
+  --display-mono: 'Overpass Mono', ui-monospace, monospace;
+
+  /* --- shape --- */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-pill: 100px;
+
+  /* Hard offset "sticker" shadows rather than blurred ones -- this is most of
+   * what gives the comps their printed, physical feel. */
+  --shadow-card: 4px 4px 0 rgba(26, 26, 24, 0.16);
+  --shadow-panel: 6px 6px 0 rgba(26, 26, 24, 0.18);
+  --shadow-button: 0 3px 0 rgba(26, 26, 24, 0.35);
+  --shadow-soft: 0 10px 26px rgba(26, 26, 24, 0.2);
+
+  --page: 1180px;
+}
+
+/* Animation names were `rw-*` in the comps, from the old RoadWarden name.
+ * Renamed to `rc-*`; `rc-blink` is new -- the comp referenced it but never
+ * defined it, so the live status dot silently never animated. */
+@keyframes rc-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes rc-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+@keyframes rc-scan {
+  0% { transform: translateY(-40px); opacity: 0; }
+  12% { opacity: 1; }
+  78% { opacity: 1; }
+  100% { transform: translateY(300px); opacity: 0; }
+}
+
+@keyframes rc-lock {
+  0%, 22% { opacity: 0; }
+  30%, 100% { opacity: 1; }
+}
+
+@keyframes rc-lockpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@keyframes rc-flow {
+  0% { opacity: 0.35; }
+  50% { opacity: 1; }
+  100% { opacity: 0.35; }
+}
+
+@keyframes rc-lens {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

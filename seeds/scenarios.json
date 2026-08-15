@@ -55,8 +55,8 @@
       "description": "Something animal-shaped on the northbound shoulder. Heavy grain, pre-dawn light.",
       "visual_evidence": ["low contrast", "shape consistent with a deer"],
       "starts_at_minute": 1351,
-      "clears_at_minute": 1600,
-      "note": "Night penalty drags confidence under the bar. Should watch, never file."
+      "clears_at_minute": null,
+      "note": "Night penalty drags confidence under the bar. Should watch, never file — and never clears, so it is still being watched when the demo ends."
     },
     {
       "_case": "FL-2204 — detected cleanly, then deliberately dropped",
@@ -110,8 +110,8 @@
       "description": "A vehicle stopped on the right shoulder. No hazard lights visible, no occupants outside.",
       "visual_evidence": ["stationary across frames"],
       "starts_at_minute": 3247,
-      "clears_at_minute": 3600,
-      "note": "Cars pull over for ordinary reasons. Sits below the filing bar and clears on its own."
+      "clears_at_minute": null,
+      "note": "Cars pull over for ordinary reasons, so this sits below the filing bar indefinitely — an abandoned vehicle nobody hears about from us."
     },
     {
       "_case": "GA-4471 — the headline case",
