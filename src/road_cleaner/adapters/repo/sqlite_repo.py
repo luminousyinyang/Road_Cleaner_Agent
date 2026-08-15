@@ -31,6 +31,9 @@ from road_cleaner.domain.models import (
     FrameRef,
     TrailEvent,
 )
+from road_cleaner.logging import get_logger
+
+log = get_logger(__name__)
 
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
@@ -63,9 +66,27 @@ class SqliteCaseRepository:
         self._conn = conn
 
     async def close(self) -> None:
-        if self._conn is not None:
-            await asyncio.to_thread(self._conn.close)
-            self._conn = None
+        """Checkpoint the WAL into the database, then close.
+
+        WAL mode means committed writes can still be sitting in the -wal
+        sidecar. That is fine while the process lives, but a run that produces
+        a week of cases and then exits must leave them readable by the *next*
+        process -- the dashboard is a separate process from the pipeline that
+        populated it. TRUNCATE folds the WAL back into the main file and resets
+        it, so what is on disk afterwards is the whole story.
+        """
+        if self._conn is None:
+            return
+
+        def finish() -> None:
+            try:
+                self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except sqlite3.Error as exc:  # pragma: no cover - best effort
+                log.warning("WAL checkpoint failed on close", extra={"error": str(exc)})
+            self._conn.close()
+
+        await asyncio.to_thread(finish)
+        self._conn = None
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -491,7 +512,13 @@ class SqliteCaseRepository:
         confirmed, how much did the state's own feed not already have? That
         ratio is the entire argument for this system existing.
         """
-        week_ago = (now - timedelta(days=7)).isoformat()
+        # The week is measured back from the most recent filing rather than from
+        # wall-clock now. For a system running continuously these are the same
+        # thing; for a soak run or a demo being reviewed days later, anchoring to
+        # the clock would report zero activity for a week that was actually busy.
+        latest = await self._read_one("SELECT MAX(filed_at) AS latest FROM filings")
+        anchor = _dt(latest["latest"]) if latest and latest["latest"] else now
+        week_ago = (min(anchor, now) - timedelta(days=7)).isoformat()
 
         filed_week = await self._read_one(
             "SELECT COUNT(*) AS n FROM filings WHERE filed_at >= ?", (week_ago,)

@@ -89,7 +89,7 @@ class Analyst:
             )
             return
 
-        case = await self._get_or_open_case(detection, camera, result, frame)
+        case = await self._get_or_open_case(detection, camera, result, frame, priors)
 
         trace(
             log, case.id, Stage.CONFIRM.value, result.reason,
@@ -103,7 +103,9 @@ class Analyst:
                 {"case_id": case.id, "detection_id": detection.id, "camera_id": camera.id},
             )
 
-    async def _get_or_open_case(self, detection: Detection, camera, result, frame) -> Case:
+    async def _get_or_open_case(
+        self, detection: Detection, camera, result, frame, priors: list[Detection]
+    ) -> Case:
         """Find the case this belongs to, or start one.
 
         The same tire gets detected dozens of times. Without this, each sighting
@@ -121,6 +123,16 @@ class Analyst:
         case_id = await self.c.repository.next_case_id(camera.state)
         now = self.c.clock.now()
 
+        # A case is opened at the moment the hazard was *first seen*, not the
+        # moment it was confirmed. The confirming frame is by definition at least
+        # ninety seconds later, and dating the case from it would understate how
+        # long the hazard has been there and make detect->file latency read as
+        # zero.
+        first_seen = min(
+            (p.analyzed_at for p in priors if p.id in result.corroborating_ids),
+            default=detection.analyzed_at,
+        )
+
         case = Case(
             id=case_id,
             camera_id=camera.id,
@@ -135,7 +147,7 @@ class Analyst:
             location=narrative.location_text(camera),
             severity=detection.severity,
             confidence=result.mean_confidence or detection.confidence,
-            opened_at=now,
+            opened_at=first_seen,
             updated_at=now,
             gate_decision=result.decision,
             gate_reason=result.reason,

@@ -116,19 +116,28 @@ def demo(
 
 
 def _reset_state(settings: Settings) -> None:
-    """Wipe everything a previous run produced. All of it is regenerable."""
+    """Wipe everything a previous run produced. All of it is regenerable.
+
+    Tolerant of failure on purpose. This is cleanup of disposable data, and a
+    directory that will not delete (a stale handle, an editor watching the tree,
+    a filesystem race on a nested tree) must not abort the run and leave the
+    caller with no database at all.
+    """
     import shutil
     from pathlib import Path
 
     db = settings.sqlite_path
     if db:
+        # The -wal and -shm siblings matter: leaving a WAL behind next to a
+        # freshly created database is how you get an unreadable store.
         for path in (db, Path(f"{db}-wal"), Path(f"{db}-shm")):
             if path.exists():
-                path.unlink()
+                path.unlink(missing_ok=True)
 
     for directory in (settings.blob_local_path, settings.filing_outbox):
         if directory and Path(directory).exists():
-            shutil.rmtree(directory)
+            shutil.rmtree(directory, ignore_errors=True)
+
     settings.ensure_directories()
 
 
@@ -142,7 +151,7 @@ async def _demo(days: float, step: int, reset: bool) -> None:
         # exist.
         _reset_state(settings)
 
-    container = build_container(settings, simulated=True)
+    container = build_container(settings, simulated=True, run_days=days)
     await container.startup()
     try:
         runner = PipelineRunner(container)
@@ -200,19 +209,30 @@ def _print_stats(stats) -> None:
 def run(
     minutes: Annotated[int, typer.Option(help="Simulated minutes to run. 0 = forever.")] = 0,
     step: Annotated[int, typer.Option(help="Seconds per tick.")] = 60,
+    once: Annotated[bool, typer.Option(help="One polling pass, then exit.")] = False,
 ) -> None:
-    """Run the pipeline. With --minutes it runs on simulated time and stops."""
-    asyncio.run(_run(minutes, step))
+    """Run the pipeline.
+
+    `--once` is what Cloud Run Jobs use: a single pass, then a clean exit. A job
+    that never returns is a job that runs until its timeout kills it.
+    """
+    asyncio.run(_run(minutes, step, once))
 
 
-async def _run(minutes: int, step: int) -> None:
+async def _run(minutes: int, step: int, once: bool) -> None:
     settings = _settings()
     container = build_container(settings, simulated=minutes > 0)
     await container.startup()
     try:
         runner = PipelineRunner(container)
         await runner.seed()
-        if minutes > 0:
+
+        if once:
+            await runner.wire()
+            published = await runner.watcher.tick()
+            await container.bus.drain()
+            console.print(f"[green]Polled the fleet. {published} frames published.[/]")
+        elif minutes > 0:
             stats = await runner.run_simulated(minutes=minutes, step_seconds=step)
             _print_stats(stats)
         else:
@@ -220,6 +240,35 @@ async def _run(minutes: int, step: int) -> None:
             await runner.run_forever(step_seconds=step)
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped.[/]")
+    finally:
+        await container.shutdown()
+
+
+@app.command()
+def audit() -> None:
+    """Re-check every open case once, then exit.
+
+    The Auditor's scheduled entry point. Closes what has cleared, escalates what
+    is overdue, and hands anything past two deadlines to a human.
+    """
+    asyncio.run(_audit())
+
+
+async def _audit() -> None:
+    from road_cleaner.agents.auditor import Auditor
+    from road_cleaner.agents.dispatcher import Dispatcher
+
+    container = build_container(_settings(), simulated=False)
+    await container.startup()
+    try:
+        auditor = Auditor(container, Dispatcher(container))
+        checked = await auditor.tick()
+        await container.bus.drain()
+        console.print(
+            f"[green]Re-checked {checked} case(s).[/] "
+            f"cleared={auditor.cleared} escalated={auditor.escalated} "
+            f"flagged={auditor.flagged_for_human}"
+        )
     finally:
         await container.shutdown()
 

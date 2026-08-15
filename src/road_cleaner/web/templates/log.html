@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Road Cleaner — the road log{% endblock %}
+
+{% block content %}
+<div class="wrap">
+  <header class="hero">
+    <div>
+      <h1>It finds the hazard,<br>then files the <em>paperwork.</em></h1>
+      <p>An agent watching public traffic cameras across three states, around the clock.
+         It reports what the official feeds missed, then keeps checking until the road is
+         actually clear.</p>
+    </div>
+    <div class="hero__art">{% include "partials/hero_art.html" %}</div>
+  </header>
+</div>
+
+<section class="band">
+  <div class="wrap">
+    <div class="band__grid">
+      {% for stat in stats %}
+      <div class="stat">
+        <div class="stat__value">{{ stat.value }}{% if stat.unit %}<small>{{ stat.unit }}</small>{% endif %}</div>
+        <div class="stat__label">{{ stat.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <section class="log" id="log">
+    <h2>The road log</h2>
+    <p class="log__summary">{{ summary }}</p>
+
+    <nav class="filters">
+      {% for f in filters %}
+      <a href="{{ f.href }}" class="{{ 'is-active' if f.key == active_filter }}">
+        {{ f.label }} <span class="count">{{ f.count }}</span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="pills">
+      {% for s in states %}
+      <a href="{{ s.href }}" class="pill {{ 'is-active' if s.key == active_state }}">
+        {{ s.label }} <span class="count">{{ s.count }}</span>
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="cases">
+      {% for c in cases %}
+      <a class="case {{ 'case--suppressed' if c.suppressed }}" href="/cases/{{ c.id }}">
+        <div class="thumb">
+          {% if c.frame_url %}<img src="{{ c.frame_url }}" alt="Camera frame for case {{ c.id }}" loading="lazy" width="640" height="360">{% endif %}
+          <span class="thumb__id">{{ c.id }}</span>
+          <span class="thumb__when">{{ c.when }}</span>
+          {# Outline only at this size. The comp puts the "debris · 0.94" caption
+             on the detail view, where there is room for it -- at thumbnail width
+             it just runs off the edge mid-word. #}
+          {% if c.box_style %}
+          <span class="box {{ 'box--clear' if c.box_clear }}" style="{{ c.box_style }}"></span>
+          {% endif %}
+        </div>
+
+        <div>
+          <h3 class="case__title">
+            {{ c.hazard }}
+            <span class="status" style="color: {{ c.tone }}">{{ c.status }}</span>
+          </h3>
+          <p class="case__where">{{ c.location }}</p>
+          <p class="case__sentence">{{ c.sentence }}</p>
+        </div>
+
+        <div class="case__ref">
+          <div class="case__ref-label">{{ c.ref_label }}</div>
+          <div class="case__ref-value">{{ c.ref }}</div>
+          <span class="case__open">open the watch →</span>
+        </div>
+      </a>
+      {% else %}
+      <div class="empty">
+        <p>Nothing here yet.</p>
+        <p>Run <code>road-cleaner demo</code> to watch a simulated week of roads.</p>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

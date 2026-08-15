@@ -68,6 +68,12 @@ class Auditor:
 
     async def check_case(self, case: Case) -> Case:
         """Pull a fresh frame and decide: closed, still there, or overdue?"""
+        if case.kind in (CaseKind.CLEARED, CaseKind.SUPPRESSED):
+            # Already finished. Re-checking would re-close it and rewrite the
+            # duration against today's date, which is how a case that closed in
+            # nineteen hours ends up claiming it took eleven days.
+            return case
+
         self.checks += 1
         camera = await self.c.repository.get_camera(case.camera_id)
         if camera is None:

@@ -1,5 +1,8 @@
-# RoadWarden — PRD & Design Doc
+# Road Cleaner — PRD & Design Doc
 ### Autonomous Road Hazard Detection & Dispatch Agent
+> Originally written under the working name *RoadWarden*; renamed to **Road Cleaner**.
+> Some assumptions here were overtaken by reality — see `docs/data-sources.md`.
+
 **All Things Agentic Hackathon · Track: The Taskmaster · Deadline: Aug 31, 2026 @ 5:00pm PDT**
 
 ---
@@ -14,9 +17,9 @@ Meanwhile, the infrastructure to see these hazards already exists. State DOTs in
 
 ## 2. Solution
 
-RoadWarden is an autonomous background agent fleet that watches public DOT traffic cameras across the Southeast, detects road hazards the official incident feeds have missed, resolves which agency owns the problem, files the report through the correct channel, and then keeps watching — verifying the hazard was actually cleared and escalating if it wasn't.
+Road Cleaner is an autonomous background agent fleet that watches public DOT traffic cameras across the Southeast, detects road hazards the official incident feeds have missed, resolves which agency owns the problem, files the report through the correct channel, and then keeps watching — verifying the hazard was actually cleared and escalating if it wasn't.
 
-It is not a chatbot. Nobody talks to RoadWarden. It runs 24/7, and its output is *filed reports with case numbers* and a resolution audit trail.
+It is not a chatbot. Nobody talks to Road Cleaner. It runs 24/7, and its output is *filed reports with case numbers* and a resolution audit trail.
 
 **The core loop (per camera, continuous):**
 1. **Watch** — Poll camera snapshots on a smart schedule
@@ -27,13 +30,13 @@ It is not a chatbot. Nobody talks to RoadWarden. It runs 24/7, and its output is
 6. **Track** — Firestore case record; agent re-checks the camera on a decaying schedule to verify clearance
 7. **Escalate** — If hazard persists past SLA (e.g., 24h for debris), agent files a follow-up and flags for human review
 
-**Key differentiator vs. Waze/TrafficVision:** they *detect and display*. RoadWarden *dispatches and tracks*. Detection is commodity; closing the loop is the product.
+**Key differentiator vs. Waze/TrafficVision:** they *detect and display*. Road Cleaner *dispatches and tracks*. Detection is commodity; closing the loop is the product.
 
 ## 3. Track & Judging Alignment
 
 **Track: The Taskmaster** — "an event-driven workflow with autonomous routing... watching for a change, figuring out what needs to happen next, and interacting with different apps to get the job done, from start to finish."
 
-| Criterion | Weight | How RoadWarden scores |
+| Criterion | Weight | How Road Cleaner scores |
 |---|---|---|
 | Innovation & Operational Utility | 40% | Fully autonomous detect→file→verify loop with zero hand-holding. Removes real friction for two personas: drivers (hazards get fixed) and DOT TMC operators (a tireless second set of eyes on hundreds of feeds). Demo shows real filed reports with real case numbers. |
 | Architectural Discipline | 30% | Event-driven Pub/Sub pipeline, decoupled agents (Watcher / Analyst / Dispatcher / Auditor), idempotent processing, per-state rate-limit governors, secrets in Secret Manager, dead-letter queues, confidence gating to prevent false-positive filings. |
@@ -228,4 +231,4 @@ Track these as you build, they write the section for you:
 
 ## 11. One-liner for the Devpost gallery
 
-> **RoadWarden** — an autonomous agent fleet that watches 2,000+ Southeast DOT traffic cameras 24/7, spots the hazards official feeds miss, figures out which agency owns the road, files the report, and keeps watching until it's actually fixed.
+> **Road Cleaner** — an autonomous agent fleet that watches 2,000+ Southeast DOT traffic cameras 24/7, spots the hazards official feeds miss, figures out which agency owns the road, files the report, and keeps watching until it's actually fixed.

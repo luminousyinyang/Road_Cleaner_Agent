@@ -13,7 +13,7 @@ an ImportError at startup.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from road_cleaner.adapters.blobs.local_store import LocalBlobStore
@@ -45,9 +45,28 @@ from road_cleaner.ports.clock import Clock, FrozenClock, SystemClock
 
 log = get_logger(__name__)
 
-# The instant a simulated run starts. Chosen so the scenario timeline lands on
-# the same days and times as the cases in the design comps.
-DEMO_START = datetime.fromisoformat("2026-07-30T07:00:00+00:00")
+# Simulated runs start on a Thursday at 07:00 UTC, because the scenario timeline
+# is written as minute offsets that land on the same weekdays and times as the
+# cases in the design comps.
+DEMO_WEEKDAY = 3  # Thursday
+DEMO_HOUR = 7
+
+
+def demo_start(now: datetime, days: float = 7.0) -> datetime:
+    """When a simulated run should begin so it *ends* around now.
+
+    Anchoring to a fixed date in the past means a demo generated today is dated
+    weeks ago, and every SLA on the dashboard reads as wildly overdue against the
+    real clock. So the start is walked back from now to the most recent Thursday
+    07:00 UTC that leaves room for the whole run -- keeping the weekday alignment
+    the scenarios assume while producing data that ends in the recent past.
+    """
+    target = now - timedelta(days=days)
+    anchor = target.replace(hour=DEMO_HOUR, minute=0, second=0, microsecond=0)
+    if anchor > target:
+        anchor -= timedelta(days=1)
+    anchor -= timedelta(days=(anchor.weekday() - DEMO_WEEKDAY) % 7)
+    return anchor
 
 
 class MissingDependencyError(RuntimeError):
@@ -115,6 +134,7 @@ def build_container(
     *,
     clock: Clock | None = None,
     simulated: bool | None = None,
+    run_days: float = 7.0,
 ) -> Container:
     """Assemble the object graph from configuration.
 
@@ -127,12 +147,19 @@ def build_container(
     if simulated is None:
         simulated = use_fixtures
 
-    resolved_clock = clock or (FrozenClock(DEMO_START) if simulated else SystemClock())
+    start = demo_start(datetime.now(UTC), run_days)
+    resolved_clock = clock or (FrozenClock(start) if simulated else SystemClock())
 
     scenarios: ScenarioBook | None = None
     if use_fixtures:
-        start = resolved_clock.now() if simulated else DEMO_START
-        scenarios = ScenarioBook.load(SEEDS_DIR / "scenarios.json", start)
+        # In simulated mode the book is anchored to the frozen clock's start. In
+        # live mode there is no simulated timeline to replay, so it is anchored
+        # to the same computed start purely so the fixture cameras have
+        # something coherent to draw.
+        scenarios = ScenarioBook.load(
+            SEEDS_DIR / "scenarios.json",
+            resolved_clock.now() if simulated else start,
+        )
 
     return Container(
         settings=settings,

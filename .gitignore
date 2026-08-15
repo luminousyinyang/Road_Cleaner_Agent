@@ -229,3 +229,9 @@ data/
 # Local service-account keys. Use Secret Manager in production, never a file.
 service-account*.json
 gcp-credentials*.json
+
+# The original design comps. Kept locally as the reference the UI was built
+# from, but they're a design-tool export (~370KB of inlined styles plus a
+# bundled runtime) rather than source, so they stay out of the repo. The design
+# system they define now lives in src/road_cleaner/web/static/css/tokens.css.
+design_artifacts/
