@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+body { margin: 0; background: oklch(0.95 0.010 85); }
+a { color: oklch(0.52 0.17 32); text-decoration: none; }
+a:hover { color: oklch(0.42 0.16 32); }
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; overflow: hidden; background: oklch(0.965 0.009 85); color: oklch(0.24 0.012 60); font-family: 'Newsreader', serif; display: grid; grid-template-rows: auto auto 1fr;">
+
+  <header style="padding: 18px 34px 12px; display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 3px double oklch(0.24 0.012 60);">
+    <div>
+      <div style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.28em; color: oklch(0.50 0.02 60); margin-bottom: 4px;">AUTONOMOUS HAZARD DISPATCH · SOUTHEAST REGION</div>
+      <h1 style="margin: 0; font-size: 40px; font-weight: 500; letter-spacing: -0.02em; line-height: 1;">The RoadWarden Ledger</h1>
+    </div>
+    <div style="text-align: right; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.44 0.02 60); line-height: 1.9;">
+      <div>SAT 08 AUG 2026 · 14:31 EDT</div>
+      <div>2,140 CAMERAS · GA / FL / NC</div>
+      <div style="color: oklch(0.52 0.17 32);">DRY_RUN ENABLED — NO LIVE FILINGS</div>
+    </div>
+  </header>
+
+  <div style="display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid oklch(0.24 0.012 60 / 0.28);">
+    <div style="padding: 13px 34px; border-right: 1px solid oklch(0.24 0.012 60 / 0.18);">
+      <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: oklch(0.50 0.02 60);">OPEN CASES</div>
+      <div style="font-size: 30px; font-weight: 400; line-height: 1.15;">14</div>
+    </div>
+    <div style="padding: 13px 24px; border-right: 1px solid oklch(0.24 0.012 60 / 0.18);">
+      <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: oklch(0.50 0.02 60);">FILED · 7 DAYS</div>
+      <div style="font-size: 30px; font-weight: 400; line-height: 1.15;">61</div>
+    </div>
+    <div style="padding: 13px 24px; border-right: 1px solid oklch(0.24 0.012 60 / 0.18);">
+      <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: oklch(0.50 0.02 60);">MISSED BY 511</div>
+      <div style="font-size: 30px; font-weight: 400; line-height: 1.15; color: oklch(0.52 0.17 32);">38<span style="font-family: 'Space Mono', monospace; font-size: 13px; color: oklch(0.50 0.02 60);"> / 62%</span></div>
+    </div>
+    <div style="padding: 13px 24px; border-right: 1px solid oklch(0.24 0.012 60 / 0.18);">
+      <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: oklch(0.50 0.02 60);">MEDIAN DETECT→FILE</div>
+      <div style="font-size: 30px; font-weight: 400; line-height: 1.15;">11<span style="font-family: 'Space Mono', monospace; font-size: 13px; color: oklch(0.50 0.02 60);">m 20s</span></div>
+    </div>
+    <div style="padding: 13px 24px;">
+      <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.2em; color: oklch(0.50 0.02 60);">PRECISION · EVAL SET</div>
+      <div style="font-size: 30px; font-weight: 400; line-height: 1.15;">0.89<span style="font-family: 'Space Mono', monospace; font-size: 13px; color: oklch(0.50 0.02 60);"> n=50</span></div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 470px; min-height: 0;">
+
+    <section style="padding: 20px 34px 0; min-height: 0; display: flex; flex-direction: column; border-right: 1px solid oklch(0.24 0.012 60 / 0.28);">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px;">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.02em;">Case Register</h2>
+        <div style="display: flex; gap: 16px; font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.48 0.02 60);">
+          <span style="border-bottom: 2px solid oklch(0.52 0.17 32); padding-bottom: 2px; color: oklch(0.24 0.012 60);">ALL</span>
+          <span>DISPATCHED</span><span>WATCHING</span><span>ESCALATED</span><span>CLOSED</span>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 78px 1fr 150px 96px 110px; gap: 0 14px; padding-bottom: 7px; border-bottom: 1px solid oklch(0.24 0.012 60 / 0.5); font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.18em; color: oklch(0.50 0.02 60);">
+        <span>CASE</span><span>HAZARD / LOCATION</span><span>AGENCY</span><span>CONF</span><span>STATE</span>
+      </div>
+
+      <div style="overflow: hidden;">
+        <div style="display: grid; grid-template-columns: 78px 1fr 150px 96px 110px; gap: 0 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid oklch(0.24 0.012 60 / 0.16); background: oklch(0.52 0.17 32 / 0.055); box-shadow: -8px 0 0 oklch(0.52 0.17 32 / 0.055), inset 3px 0 0 oklch(0.52 0.17 32);">
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px; padding-left: 10px;">GA-4471</span>
+          <span><span style="font-size: 16px;">Debris in travel lane 2</span><br /><span style="font-family: 'Space Mono', monospace; font-size: 10px; color: oklch(0.48 0.02 60);">I-285 WB @ CAMP CREEK PKWY</span></span>
+          <span style="font-size: 14px;">GDOT Dist. 7</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px;">0.94</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.52 0.17 32);">DISPATCHED</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 78px 1fr 150px 96px 110px; gap: 0 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid oklch(0.24 0.012 60 / 0.16);">
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px; padding-left: 10px;">NC-1180</span>
+          <span><span style="font-size: 16px;">Standing water on shoulder</span><br /><span style="font-family: 'Space Mono', monospace; font-size: 10px; color: oklch(0.48 0.02 60);">US-64 E @ TARBORO BYPASS</span></span>
+          <span style="font-size: 14px;">NCDOT Div. 4</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px;">0.91</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; font-weight: 700;">ESCALATED</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 78px 1fr 150px 96px 110px; gap: 0 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid oklch(0.24 0.012 60 / 0.16);">
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px; padding-left: 10px;">FL-2209</span>
+          <span><span style="font-size: 16px;">Stalled vehicle, right shoulder</span><br /><span style="font-family: 'Space Mono', monospace; font-size: 10px; color: oklch(0.48 0.02 60);">I-4 EB @ MM 78.2</span></span>
+          <span style="font-size: 14px;">FDOT Dist. 5</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px;">0.72</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.46 0.02 60);">WATCHING</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 78px 1fr 150px 96px 110px; gap: 0 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid oklch(0.24 0.012 60 / 0.16);">
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px; padding-left: 10px;">GA-4468</span>
+          <span><span style="font-size: 16px;">Tire tread, lane 1</span><br /><span style="font-family: 'Space Mono', monospace; font-size: 10px; color: oklch(0.48 0.02 60);">I-75 NB @ HOWELL MILL RD</span></span>
+          <span style="font-size: 14px;">GDOT Dist. 7</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px;">0.96</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.46 0.02 60);">CLEARED ✓</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 78px 1fr 150px 96px 110px; gap: 0 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid oklch(0.24 0.012 60 / 0.16); opacity: 0.55;">
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px; padding-left: 10px;">FL-2204</span>
+          <span><span style="font-size: 16px;">Lane closure — already in feed</span><br /><span style="font-family: 'Space Mono', monospace; font-size: 10px; color: oklch(0.48 0.02 60);">I-95 SB @ ATLANTIC BLVD</span></span>
+          <span style="font-size: 14px;">—</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px;">0.88</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em;">SUPPRESSED</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 78px 1fr 150px 96px 110px; gap: 0 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid oklch(0.24 0.012 60 / 0.16);">
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px; padding-left: 10px;">NC-1176</span>
+          <span><span style="font-size: 16px;">Damaged guardrail, median</span><br /><span style="font-family: 'Space Mono', monospace; font-size: 10px; color: oklch(0.48 0.02 60);">I-40 W @ EXIT 293</span></span>
+          <span style="font-size: 14px;">NCDOT Div. 5</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px;">0.83</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.52 0.17 32);">DISPATCHED</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 78px 1fr 150px 96px 110px; gap: 0 14px; align-items: center; padding: 13px 0; border-bottom: 1px solid oklch(0.24 0.012 60 / 0.16);">
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px; padding-left: 10px;">GA-4465</span>
+          <span><span style="font-size: 16px;">Deer on shoulder, NB lanes</span><br /><span style="font-family: 'Space Mono', monospace; font-size: 10px; color: oklch(0.48 0.02 60);">GA-400 NB @ HOLCOMB BRIDGE</span></span>
+          <span style="font-size: 14px;">GDOT Dist. 7</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 12px;">0.69</span>
+          <span style="font-family: 'Space Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: oklch(0.46 0.02 60);">WATCHING</span>
+        </div>
+      </div>
+    </section>
+
+    <aside style="padding: 20px 30px; min-height: 0; overflow: hidden; background: oklch(0.985 0.006 85);">
+      <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.22em; color: oklch(0.50 0.02 60);">FILED REPORT · RECORD OF DISPATCH</div>
+      <h2 style="margin: 6px 0 2px; font-size: 27px; font-weight: 500; letter-spacing: -0.015em;">Case GA-4471</h2>
+      <div style="font-family: 'Space Mono', monospace; font-size: 11px; color: oklch(0.52 0.17 32); letter-spacing: 0.06em;">GDOT REF TMC-88213 · ACCEPTED 14:14 EDT</div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 16px 0;">
+        <div>
+          <div style="aspect-ratio: 16/10; background: repeating-linear-gradient(45deg, oklch(0.90 0.008 85), oklch(0.90 0.008 85) 4px, oklch(0.94 0.008 85) 4px, oklch(0.94 0.008 85) 8px); border: 1px solid oklch(0.24 0.012 60 / 0.35);"></div>
+          <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.1em; color: oklch(0.48 0.02 60); margin-top: 5px;">EVIDENCE 14:02:19</div>
+        </div>
+        <div>
+          <div style="aspect-ratio: 16/10; background: repeating-linear-gradient(45deg, oklch(0.90 0.008 85), oklch(0.90 0.008 85) 4px, oklch(0.94 0.008 85) 4px, oklch(0.94 0.008 85) 8px); border: 1px solid oklch(0.24 0.012 60 / 0.35);"></div>
+          <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.1em; color: oklch(0.48 0.02 60); margin-top: 5px;">CONFIRMATION 14:04:02</div>
+        </div>
+      </div>
+
+      <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.55; text-wrap: pretty;">Large dark object, likely truck tire tread, obstructing the center travel lane. Two vehicles observed making lateral deviations to avoid it. Object persists across two frames captured 103 seconds apart. No corresponding event in the 511GA feed within 500&nbsp;m.</p>
+
+      <div style="border-top: 1px solid oklch(0.24 0.012 60 / 0.3); border-bottom: 1px solid oklch(0.24 0.012 60 / 0.3); padding: 12px 0; margin-bottom: 16px; font-family: 'Space Mono', monospace; font-size: 11px; line-height: 2.1; color: oklch(0.34 0.015 60);">
+        <div style="display: flex; justify-content: space-between;"><span style="color: oklch(0.50 0.02 60);">JURISDICTION</span><span>GDOT · DISTRICT 7</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: oklch(0.50 0.02 60);">CHANNEL</span><span>WEB FORM (HEADLESS)</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: oklch(0.50 0.02 60);">SLA</span><span>24H · DEBRIS</span></div>
+        <div style="display: flex; justify-content: space-between;"><span style="color: oklch(0.50 0.02 60);">NEXT AUDIT</span><span>15:14 EDT</span></div>
+      </div>
+
+      <div style="font-family: 'Space Mono', monospace; font-size: 9px; letter-spacing: 0.22em; color: oklch(0.50 0.02 60); margin-bottom: 8px;">AUDIT TRAIL</div>
+      <div style="font-family: 'Space Mono', monospace; font-size: 10.5px; line-height: 1.95; color: oklch(0.38 0.015 60);">
+        <div>14:02:19 · gemma pre-filter → ANOMALY</div>
+        <div>14:02:24 · gemini-3.5-flash → debris / 0.94</div>
+        <div>14:04:02 · gate passed → hazard.confirmed</div>
+        <div>14:04:44 · jurisdiction → GDOT D7</div>
+        <div>14:14:51 · dispatched → TMC-88213</div>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}"></script>
+</body>
+</html>

@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Road Cleaner runtime artifacts ------------------------------------------
+# Everything the agents write while running. All of it is regenerable with
+# `make seed` / `make demo`, and none of it should ever be committed --
+# especially data/outbox/, which holds fully-composed agency reports.
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local service-account keys. Use Secret Manager in production, never a file.
+service-account*.json
+gcp-credentials*.json

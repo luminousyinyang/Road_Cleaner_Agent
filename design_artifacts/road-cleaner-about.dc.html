@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800;900&family=Overpass+Mono:wght@400;600&family=Zilla+Slab:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet" />
+<style>
+body { margin: 0; background: #F6F6F3; }
+a { color: #0F5340; text-decoration: none; }
+a:hover { color: #E2622B; }
+</style>
+</helmet>
+<div style="background: #F6F6F3; color: #1B1C1A; font-family: 'Zilla Slab', Georgia, serif; min-width: 1080px;">
+
+  <nav style="position: sticky; top: 0; z-index: 50; background: rgba(246,246,243,0.94); backdrop-filter: blur(8px); border-bottom: 1px solid #DCDDD7; display: flex; align-items: center; gap: 34px; padding: 12px 40px;">
+    <a href="road-cleaner.dc.html" style="display: flex; align-items: center; gap: 11px;">
+      <span style="width: 38px; height: 38px; background: #0F5340; border-radius: 6px; box-shadow: inset 0 0 0 2px #0F5340, inset 0 0 0 4px #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 15px; color: #FFFFFF; letter-spacing: -0.02em;">RW</span>
+      <span style="font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 19px; letter-spacing: -0.025em; color: #1B1C1A;">Road Cleaner</span>
+    </a>
+    <div style="display: flex; gap: 26px; font-family: 'Overpass', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;">
+      <a href="road-cleaner.dc.html" style="color: #454741;" style-hover="color: #E2622B;">Road Log</a>
+      <a href="#top" style="color: #1B1C1A; border-bottom: 2px solid #F2C230; padding-bottom: 2px;">About</a>
+    </div>
+    <a href="road-cleaner.dc.html" style="margin-left: auto; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #F6F6F3; background: #0F5340; padding: 11px 18px; border-radius: 5px;" style-hover="background: #14684F;">See the road log →</a>
+  </nav>
+
+  <section id="top" style="padding: 76px 40px 0;">
+    <div style="max-width: 760px; margin: 0 auto;">
+      <div style="font-family: 'Overpass Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: #74776E; margin-bottom: 18px;">HOW IT WORKS</div>
+      <h1 style="margin: 0 0 22px; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 58px; line-height: 0.98; letter-spacing: -0.035em; text-wrap: balance;">Detection is the easy part.</h1>
+      <p style="margin: 0; font-size: 21px; line-height: 1.55; color: #363832; text-wrap: pretty;">Plenty of things can spot debris on a road. The hard part is everything that comes after seeing it — working out whose road it is, saying so through the right channel, and then actually checking whether anybody came. That's the part nobody has built, so that's what Road Cleaner is.</p>
+    </div>
+  </section>
+
+  <section id="loop" style="padding: 56px 40px 0;">
+    <div style="max-width: 760px; margin: 0 auto;">
+      <div style="font-family: 'Overpass Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: #74776E; padding-bottom: 14px; border-bottom: 2px solid #1B1C1A;">THE LOOP · RUNS PER CAMERA, CONTINUOUSLY</div>
+
+      <div style="display: flex; align-items: flex-start; gap: 22px; padding: 24px 0; border-bottom: 1px solid #DCDDD7;">
+        <div style="width: 44px; height: 50px; flex: none; background: #FFFFFF; border: 2.5px solid #1B1C1A; border-radius: 5px 5px 12px 12px; display: flex; align-items: center; justify-content: center; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 21px;">1</div>
+        <div>
+          <h2 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.015em;">Watch</h2>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #454741; text-wrap: pretty;">Busy corridors get a look every couple of minutes, quiet ones every ten, and a camera with an open case gets one every minute. If the new frame is identical to the last one, it's thrown away before anything expensive happens to it.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: flex-start; gap: 22px; padding: 24px 0; border-bottom: 1px solid #DCDDD7;">
+        <div style="width: 44px; height: 50px; flex: none; background: #FFFFFF; border: 2.5px solid #1B1C1A; border-radius: 5px 5px 12px 12px; display: flex; align-items: center; justify-content: center; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 21px;">2</div>
+        <div>
+          <h2 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.015em;">Detect</h2>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #454741; text-wrap: pretty;">A small, cheap model answers one question: is anything odd in this road scene? Most frames stop right there. Only the survivors reach the vision model that writes the actual finding — hazard type, which lane, how bad, how sure.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: flex-start; gap: 22px; padding: 24px 0; border-bottom: 1px solid #DCDDD7;">
+        <div style="width: 44px; height: 50px; flex: none; background: #FFFFFF; border: 2.5px solid #1B1C1A; border-radius: 5px 5px 12px 12px; display: flex; align-items: center; justify-content: center; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 21px;">3</div>
+        <div>
+          <h2 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.015em;">Confirm</h2>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #454741; text-wrap: pretty;">Nothing gets reported off a single frame. It has to still be there ninety seconds later, and the state's own incident feed has to not already know about it. If they know, the case is dropped on purpose — catching what they missed is the entire job.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: flex-start; gap: 22px; padding: 24px 0; border-bottom: 1px solid #DCDDD7;">
+        <div style="width: 44px; height: 50px; flex: none; background: #FFFFFF; border: 2.5px solid #1B1C1A; border-radius: 5px 5px 12px 12px; display: flex; align-items: center; justify-content: center; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 21px;">4</div>
+        <div>
+          <h2 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.015em;">Resolve</h2>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #454741; text-wrap: pretty;">Whose road is this, really? The same half-mile might belong to a state transportation district, a county public works department, a city, or a toll authority. A report sent to the wrong desk gets forwarded, queued, and forgotten.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: flex-start; gap: 22px; background: #F2C230; border-radius: 8px; padding: 24px 20px; margin: 10px 0;">
+        <div style="width: 44px; height: 50px; flex: none; background: #FFFFFF; border: 2.5px solid #1B1C1A; border-radius: 5px 5px 12px 12px; display: flex; align-items: center; justify-content: center; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 21px;">5</div>
+        <div>
+          <h2 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.015em;">Report</h2>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #3A3218; text-wrap: pretty;">An open service-request endpoint where the agency has one. Their own maintenance form where they don't. A written email with the frames attached where that's all there is. This is the step every hazard map skips.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: flex-start; gap: 22px; padding: 24px 0; border-bottom: 1px solid #DCDDD7;">
+        <div style="width: 44px; height: 50px; flex: none; background: #FFFFFF; border: 2.5px solid #1B1C1A; border-radius: 5px 5px 12px 12px; display: flex; align-items: center; justify-content: center; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 21px;">6</div>
+        <div>
+          <h2 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.015em;">Check back</h2>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #454741; text-wrap: pretty;">An hour later, then three, then twelve. Same camera, same question: is it gone yet? When the answer is finally yes, the case closes with a before-and-after pair — which is something no hazard map has ever been able to tell you.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: flex-start; gap: 22px; padding: 24px 0;">
+        <div style="width: 44px; height: 50px; flex: none; background: #E2622B; border: 2.5px solid #1B1C1A; border-radius: 5px 5px 12px 12px; display: flex; align-items: center; justify-content: center; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 21px; color: #FFFFFF;">7</div>
+        <div>
+          <h2 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.015em;">Push</h2>
+          <p style="margin: 0; font-size: 18px; line-height: 1.5; color: #454741; text-wrap: pretty;">Past due and still sitting there? File once more, one tier up, and flag it for a person. An agent that politely re-sends the same message forever is just spam with extra steps.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="coverage" style="margin-top: 62px; background: #0F5340; color: #FFFFFF; padding: 60px 40px;">
+    <div style="max-width: 760px; margin: 0 auto;">
+      <div style="font-family: 'Overpass Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: #A8CDB8; margin-bottom: 14px;">WHERE IT WATCHES</div>
+      <h2 style="margin: 0 0 18px; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 40px; line-height: 1.02; letter-spacing: -0.03em;">Three states on duty.</h2>
+      <p style="margin: 0 0 30px; font-size: 19px; line-height: 1.5; color: #C6DFCF; text-wrap: pretty;">Every camera comes from an official state transportation feed that was built for public use. No scraped maps, no private cameras, no faces, no plates.</p>
+
+      <div style="display: flex; flex-direction: column; gap: 2px; background: rgba(255,255,255,0.3); border: 2px solid #FFFFFF; border-radius: 8px; overflow: hidden;">
+        <div style="background: #0F5340; padding: 19px 22px; display: flex; align-items: baseline; gap: 20px;">
+          <span style="font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 24px; letter-spacing: -0.02em; width: 180px; flex: none;">Georgia</span>
+          <span style="font-size: 17px; color: #C6DFCF;">Developer key, live video streams, the best-documented feed in the region.</span>
+        </div>
+        <div style="background: #0F5340; padding: 19px 22px; display: flex; align-items: baseline; gap: 20px;">
+          <span style="font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 24px; letter-spacing: -0.02em; width: 180px; flex: none;">Florida</span>
+          <span style="font-size: 17px; color: #C6DFCF;">The largest camera network down here, plus open metadata that needs no key at all.</span>
+        </div>
+        <div style="background: #0F5340; padding: 19px 22px; display: flex; align-items: baseline; gap: 20px;">
+          <span style="font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 24px; letter-spacing: -0.02em; width: 180px; flex: none;">N. Carolina</span>
+          <span style="font-size: 17px; color: #C6DFCF;">High-refresh snapshots and a separate incident feed worth cross-checking against.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="rules" style="padding: 62px 40px 92px;">
+    <div style="max-width: 760px; margin: 0 auto;">
+      <div style="font-family: 'Overpass Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.16em; color: #74776E; margin-bottom: 14px;">HOUSE RULES</div>
+      <h2 style="margin: 0 0 16px; font-family: 'Overpass', sans-serif; font-weight: 900; font-size: 40px; line-height: 1.02; letter-spacing: -0.03em; text-wrap: balance;">An agent that files paperwork on your behalf had better be a good neighbour.</h2>
+      <p style="margin: 0 0 28px; font-size: 19px; line-height: 1.5; color: #454741; text-wrap: pretty;">Public agencies are small and busy. A robot that cries wolf at them is worse than no robot at all, so there are hard rules it doesn't get to break.</p>
+
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div style="background: #FFFFFF; border: 2px solid #1B1C1A; border-radius: 8px; padding: 20px 22px; display: flex; gap: 18px; align-items: flex-start; box-shadow: 4px 4px 0 rgba(27,28,26,0.14);">
+          <div style="width: 26px; height: 26px; flex: none; margin-top: 4px; background: #E2622B; border: 2px solid #1B1C1A; transform: rotate(45deg);"></div>
+          <div>
+            <h3 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.01em;">Quiet by default</h3>
+            <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #454741;">Dry run is the default setting. Reports get written in full and parked, not sent, until a person deliberately turns filing on for a specific case.</p>
+          </div>
+        </div>
+        <div style="background: #FFFFFF; border: 2px solid #1B1C1A; border-radius: 8px; padding: 20px 22px; display: flex; gap: 18px; align-items: flex-start; box-shadow: 4px 4px 0 rgba(27,28,26,0.14);">
+          <div style="width: 26px; height: 26px; flex: none; margin-top: 4px; background: #F2C230; border: 2px solid #1B1C1A; transform: rotate(45deg);"></div>
+          <div>
+            <h3 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.01em;">It would rather miss one</h3>
+            <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #454741;">Two frames, ninety seconds apart, checked against the state's own feed. A missed hazard costs nothing. A false one costs the only thing that matters here, which is being believed the next time.</p>
+          </div>
+        </div>
+        <div style="background: #FFFFFF; border: 2px solid #1B1C1A; border-radius: 8px; padding: 20px 22px; display: flex; gap: 18px; align-items: flex-start; box-shadow: 4px 4px 0 rgba(27,28,26,0.14);">
+          <div style="width: 26px; height: 26px; flex: none; margin-top: 4px; background: #0F5340; border: 2px solid #1B1C1A; transform: rotate(45deg);"></div>
+          <div>
+            <h3 style="margin: 0 0 5px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.01em;">Roads, not people</h3>
+            <p style="margin: 0; font-size: 17px; line-height: 1.5; color: #454741;">Public infrastructure cameras only. No face or plate analysis, ever. Frames that aren't evidence are deleted within a week, and every report keeps its frames and reasoning so any agency can audit exactly why it got a message.</p>
+          </div>
+        </div>
+      </div>
+
+      <a href="road-cleaner.dc.html" style="display: inline-flex; align-items: center; gap: 10px; margin-top: 36px; font-family: 'Overpass', sans-serif; font-weight: 800; font-size: 14px; letter-spacing: 0.06em; text-transform: uppercase; background: #1B1C1A; color: #F6F6F3; padding: 16px 26px; border-radius: 5px;" style-hover="background: #0F5340;">See what it caught this week <span style="font-size: 17px; line-height: 1;">→</span></a>
+    </div>
+  </section>
+</div>
+</x-dc>
+</body>
+</html>

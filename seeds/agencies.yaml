@@ -1,0 +1,256 @@
+# Who owns which road, and how to reach them.
+#
+# This registry is the part of the system with no clever answer: somebody has to
+# sit down once and work out that a traffic signal on a US route inside Durham
+# belongs to the city, while the pavement it stands on belongs to NCDOT. That
+# knowledge is here, as data, rather than being asked of a language model every
+# time -- it is stable, it is checkable, and getting it wrong means a report
+# lands on the wrong desk and quietly dies.
+#
+# Contact details below are deliberately non-routable (`.invalid` domains and
+# example endpoints). Filling in real ones is a conscious step, taken alongside
+# turning DRY_RUN off -- see the README.
+
+agencies:
+  # ---------------------------------------------------------------- Georgia
+  - id: ga-dot-d7
+    name: Georgia DOT — District 7
+    level: state_dot
+    state: GA
+    channel: maintenance_form
+    endpoint: https://example.invalid/gdot/d7/maintenance-request
+    ref_label: GEORGIA DOT
+    ref_format: TMC-#####
+    jurisdiction_note: >-
+      Metro Atlanta interstates and state routes. Covers the I-285 perimeter,
+      I-75/I-85 through the connector, and GA-400.
+
+  - id: ga-dot-d3
+    name: Georgia DOT — District 3
+    level: state_dot
+    state: GA
+    channel: maintenance_form
+    endpoint: https://example.invalid/gdot/d3/maintenance-request
+    ref_label: GEORGIA DOT
+    ref_format: TMC-#####
+    jurisdiction_note: West central Georgia, including the I-16 corridor at Macon.
+
+  - id: ga-dot-d5
+    name: Georgia DOT — District 5
+    level: state_dot
+    state: GA
+    channel: maintenance_form
+    endpoint: https://example.invalid/gdot/d5/maintenance-request
+    ref_label: GEORGIA DOT
+    ref_format: TMC-#####
+    jurisdiction_note: Southeast Georgia and the coast, including I-95 at Savannah.
+
+  # ---------------------------------------------------------------- Florida
+  - id: fl-dot-d2
+    name: FDOT District 2
+    level: state_dot
+    state: FL
+    channel: email
+    email: district2-maintenance@example.invalid
+    ref_label: FDOT D2
+    ref_format: SR-######
+    jurisdiction_note: Northeast Florida, Jacksonville area.
+
+  - id: fl-dot-d4
+    name: FDOT District 4
+    level: state_dot
+    state: FL
+    channel: email
+    email: district4-maintenance@example.invalid
+    ref_label: FDOT D4
+    ref_format: SR-######
+    jurisdiction_note: >-
+      Broward and Palm Beach. Note this district does NOT cover the Turnpike
+      mainline even where it runs through the same counties.
+
+  - id: fl-dot-d5
+    name: FDOT District 5
+    level: state_dot
+    state: FL
+    channel: email
+    email: district5-maintenance@example.invalid
+    ref_label: FDOT D5
+    ref_format: SR-######
+    jurisdiction_note: Central Florida, including the I-4 corridor.
+
+  - id: fl-dot-d6
+    name: FDOT District 6
+    level: state_dot
+    state: FL
+    channel: email
+    email: district6-maintenance@example.invalid
+    ref_label: FDOT D6
+    ref_format: SR-######
+    jurisdiction_note: Miami-Dade and the Keys.
+
+  - id: fl-dot-d7
+    name: FDOT District 7
+    level: state_dot
+    state: FL
+    channel: email
+    email: district7-maintenance@example.invalid
+    ref_label: FDOT D7
+    ref_format: SR-######
+    jurisdiction_note: Tampa Bay area.
+
+  - id: fl-turnpike
+    name: Florida's Turnpike Enterprise
+    level: toll_authority
+    state: FL
+    channel: email
+    email: turnpike-maintenance@example.invalid
+    ref_label: TURNPIKE
+    ref_format: SR-######
+    sla_overrides:
+      # The Turnpike runs its own maintenance crews and clears debris faster
+      # than the state districts do.
+      debris: 6
+      stalled_vehicle: 2
+    jurisdiction_note: >-
+      Runs its own maintenance operation, separate from FDOT. Anything on the
+      Turnpike mainline or its ramps goes here, never to the district the road
+      happens to pass through. Getting this wrong is the single most common
+      jurisdiction error in Florida.
+
+  # ---------------------------------------------------------- North Carolina
+  - id: nc-dot-d3
+    name: NCDOT Division 3
+    level: state_dot
+    state: NC
+    channel: maintenance_form
+    endpoint: https://example.invalid/ncdot/div3/maintenance
+    ref_label: NCDOT DIVISION 3
+    ref_format: MR-#####
+    jurisdiction_note: Southeastern coastal counties, Wilmington area.
+
+  - id: nc-dot-d4
+    name: NCDOT Division 4
+    level: state_dot
+    state: NC
+    channel: maintenance_form
+    endpoint: https://example.invalid/ncdot/div4/maintenance
+    ref_label: NCDOT DIVISION 4
+    ref_format: MR-#####
+    jurisdiction_note: Eastern piedmont, including the US-64 corridor at Tarboro.
+
+  - id: nc-dot-d5
+    name: NCDOT Division 5
+    level: state_dot
+    state: NC
+    channel: maintenance_form
+    endpoint: https://example.invalid/ncdot/div5/maintenance
+    ref_label: NCDOT DIVISION 5
+    ref_format: MR-#####
+    jurisdiction_note: The Triangle — Wake, Durham and Franklin counties.
+
+  - id: nc-dot-d10
+    name: NCDOT Division 10
+    level: state_dot
+    state: NC
+    channel: maintenance_form
+    endpoint: https://example.invalid/ncdot/div10/maintenance
+    ref_label: NCDOT DIVISION 10
+    ref_format: MR-#####
+    jurisdiction_note: Charlotte metro.
+
+  - id: nc-dot-d13
+    name: NCDOT Division 13
+    level: state_dot
+    state: NC
+    channel: maintenance_form
+    endpoint: https://example.invalid/ncdot/div13/maintenance
+    ref_label: NCDOT DIVISION 13
+    ref_format: MR-#####
+    jurisdiction_note: Western mountains, Asheville area.
+
+  # --------------------------------------------------------------- Municipal
+  # Cities matter because signals, signs and surface streets inside city limits
+  # are usually municipal even when the route number says "state highway".
+  - id: durham-public-works
+    name: Durham Public Works
+    level: city
+    state: NC
+    channel: open311
+    endpoint: https://example.invalid/durham/open311/v2
+    ref_label: DURHAM PUBLIC WORKS
+    ref_format: DUR-2026-#####
+    jurisdiction_note: >-
+      Traffic signals and surface streets within Durham city limits, including
+      signals mounted on state routes.
+
+  - id: raleigh-public-works
+    name: City of Raleigh — Transportation
+    level: city
+    state: NC
+    channel: open311
+    endpoint: https://example.invalid/raleigh/open311/v2
+    ref_label: RALEIGH 311
+    ref_format: RAL-2026-#####
+    jurisdiction_note: Signals and city streets within Raleigh.
+
+  - id: atlanta-public-works
+    name: City of Atlanta — Department of Transportation
+    level: city
+    state: GA
+    channel: open311
+    endpoint: https://example.invalid/atlanta/open311/v2
+    ref_label: ATLANTA 311
+    ref_format: ATL-2026-#####
+    jurisdiction_note: Signals and city streets within Atlanta.
+
+  - id: fortlauderdale-public-works
+    name: Fort Lauderdale Public Works
+    level: city
+    state: FL
+    channel: open311
+    endpoint: https://example.invalid/ftlauderdale/open311/v2
+    ref_label: FT LAUDERDALE 311
+    ref_format: FTL-2026-#####
+    jurisdiction_note: Signals and city streets within Fort Lauderdale.
+
+
+# Rules are evaluated top to bottom; the first match wins. They run before any
+# model is consulted, and in practice they resolve almost everything.
+rules:
+  - id: toll-facility
+    description: >-
+      Toll roads run their own maintenance. Check this first — it is the rule
+      most often missed, because the road passes straight through a DOT
+      district that has nothing to do with it.
+    match:
+      road_contains: ["Turnpike", "Toll", "Expressway Authority"]
+    agency_by_state:
+      FL: fl-turnpike
+
+  - id: municipal-signal
+    description: >-
+      Signal heads and signs inside a city belong to the city, even on a state
+      route. This is why a US-70 signal in Durham goes to Durham, not NCDOT.
+    match:
+      hazard_types: ["infrastructure_damage"]
+      lane_positions: ["intersection"]
+      county_in: ["Durham", "Wake", "Fulton", "Broward"]
+    agency_by_county:
+      Durham: durham-public-works
+      Wake: raleigh-public-works
+      Fulton: atlanta-public-works
+      Broward: fortlauderdale-public-works
+
+  - id: camera-owner
+    description: >-
+      The 511 APIs tell us who owns each camera. When they do, believe them —
+      it is better information than anything we could infer.
+    match:
+      has_owner_agency: true
+    use_camera_owner: true
+
+  - id: interstate-mainline
+    description: Interstates and US routes default to the state DOT district.
+    match:
+      road_prefix: ["I-", "US-", "SR-", "GA-", "FL-", "NC-"]
+    use_camera_owner: true

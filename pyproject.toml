@@ -1,0 +1,65 @@
+[project]
+name = "road-cleaner"
+version = "0.1.0"
+description = "An autonomous agent fleet that watches public DOT traffic cameras, files hazard reports with the right agency, and keeps watching until the road is actually clear."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+
+dependencies = [
+    # Core runtime
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "typer>=0.15",
+    "rich>=13.9",
+    "httpx>=0.28",
+    "pyyaml>=6.0",
+    # Web dashboard
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.20",
+    # Frame rendering + perceptual hashing
+    "pillow>=11.0",
+]
+
+[project.optional-dependencies]
+# Everything needed to talk to Google Cloud + Gemini. Not required for local mode.
+cloud = [
+    "google-adk>=1.15",
+    "google-genai>=1.39",
+    "google-cloud-firestore>=2.21",
+    "google-cloud-storage>=2.19",
+    "google-cloud-pubsub>=2.27",
+    "google-cloud-secret-manager>=2.24",
+    "google-cloud-logging>=3.12",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+road-cleaner = "road_cleaner.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/road_cleaner"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+ignore = ["B008"]  # typer/fastapi use function calls in defaults by design
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]

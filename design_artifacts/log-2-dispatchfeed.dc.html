@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+body { margin: 0; background: #FAFAF8; }
+a { color: #1A1A18; text-decoration: none; }
+a:hover { color: #B4451F; }
+@keyframes rw-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+</style>
+</helmet>
+<div style="background: #FAFAF8; color: #1A1A18; font-family: 'Instrument Sans', system-ui, sans-serif; min-width: 1080px; padding-bottom: 110px;">
+
+  <nav style="display: flex; align-items: center; gap: 30px; padding: 24px 56px;">
+    <span style="font-weight: 600; font-size: 15px; letter-spacing: -0.01em;">RoadWarden</span>
+    <div style="display: flex; gap: 22px; font-size: 14px;">
+      <a href="#log" style="color: #1A1A18;">Road log</a>
+      <a href="roadwarden-about.dc.html" style="color: #6B6B65;" style-hover="color: #B4451F;">How it works</a>
+    </div>
+    <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6B6B65;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #2F7A4F; animation: rw-breathe 2.4s ease-in-out infinite;"></span>watching now
+    </span>
+  </nav>
+
+  <header style="padding: 58px 56px 0; display: grid; grid-template-columns: 1fr 420px; gap: 60px; align-items: center;">
+    <div>
+      <h1 style="margin: 0 0 18px; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 88px; line-height: 0.94; letter-spacing: -0.03em; max-width: 12em;">It finds the hazard, then files the <i style="color: #B4451F;">paperwork.</i></h1>
+      <p style="margin: 0; font-size: 19px; line-height: 1.5; color: #45453F; max-width: 26em;">An agent watching public traffic cameras across three states, around the clock.</p>
+    </div>
+    <svg viewBox="0 0 420 400" style="width: 100%; height: auto; display: block;" aria-label="A curving road with a traffic cone">
+      <path d="M 210 400 C 90 320 320 250 170 165 C 70 108 300 70 250 0" fill="none" stroke="#1A1A18" stroke-width="84" />
+      <path d="M 210 400 C 90 320 320 250 170 165 C 70 108 300 70 250 0" fill="none" stroke="#FAFAF8" stroke-width="70" />
+      <path d="M 210 400 C 90 320 320 250 170 165 C 70 108 300 70 250 0" fill="none" stroke="#D9A227" stroke-width="4" stroke-dasharray="20 18" />
+      <ellipse cx="248" cy="252" rx="21" ry="9" fill="#1A1A18" />
+      <ellipse cx="141" cy="336" rx="27" ry="11" fill="#B4451F" opacity="0.14" />
+      <path d="M 141 288 L 158 331 L 124 331 Z" fill="#B4451F" />
+      <rect x="130" y="311" width="22" height="6" fill="#FAFAF8" />
+      <rect x="118" y="331" width="46" height="7" rx="2" fill="#B4451F" />
+    </svg>
+  </header>
+
+  <section id="log" style="margin-top: 70px; padding: 0 56px; max-width: 900px;">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; margin-bottom: 8px;">
+      <h2 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 34px; letter-spacing: -0.02em;">The road log</h2>
+      <div style="display: flex; gap: 18px; font-size: 13.5px;">
+        <sc-for list="{{ filters }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.select }}" style="{{ f.style }}">{{ f.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+    <div style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #6B6B65; margin-bottom: 34px;">{{ summary }}</div>
+
+    <sc-for list="{{ days }}" as="d" hint-placeholder-count="4">
+      <div style="margin-bottom: 34px;">
+        <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 4px;">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #8A8A82;">{{ d.label }}</span>
+          <span style="flex: 1; height: 1px; background: #E6E5DF;"></span>
+        </div>
+        <sc-for list="{{ d.entries }}" as="c" hint-placeholder-count="3">
+          <div onClick="{{ c.open }}" style="{{ c.rowStyle }}" style-hover="background: #F2F1EC;">
+            <span style="{{ c.dotStyle }}"></span>
+            <div>
+              <div style="font-size: 20px; line-height: 1.35; letter-spacing: -0.012em; text-wrap: pretty;"><b style="font-weight: 600;">{{ c.hazard }}</b> <span style="color: #6B6B65;">on {{ c.location }}.</span> {{ c.sentence }}</div>
+              <div style="display: flex; align-items: baseline; gap: 12px; margin-top: 9px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #8A8A82;">
+                <span>{{ c.time }}</span>
+                <span style="{{ c.statusStyle }}">{{ c.status }}</span>
+                <span>{{ c.ref }}</span>
+                <span style="color: #B4451F;">open the watch →</span>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1000}}">
+const CASES = [
+  { id: "GA-4471", day: "Monday, Aug 3", time: "2:14p", kind: "filed", status: "filed", hazard: "A truck tire", location: "I-285 westbound at Camp Creek", sentence: "Two cars swerved around it inside a minute, so it went straight to Georgia DOT.", ref: "TMC-88213" },
+  { id: "GA-4468", day: "Monday, Aug 3", time: "2:02p", kind: "cleared", status: "cleared", hazard: "Shredded tire tread", location: "I-75 northbound at Howell Mill", sentence: "Gone by Tuesday morning — closed with a before and after from the same camera.", ref: "TMC-88198" },
+  { id: "NC-1180", day: "Saturday, Aug 1", time: "6:40a", kind: "escalated", status: "past due", hazard: "Standing water", location: "US-64 east at the Tarboro Bypass", sentence: "Still there a day later, so it got filed a second time and flagged for a person.", ref: "MR-40118" },
+  { id: "FL-2209", day: "Saturday, Aug 1", time: "1:07p", kind: "watching", status: "watching", hazard: "A stopped car", location: "I-4 eastbound at mile marker 78", sentence: "Only one frame agrees so far. Nobody gets a message until a second one does.", ref: "held · 0.72" },
+  { id: "NC-1176", day: "Friday, Jul 31", time: "11:22p", kind: "filed", status: "filed", hazard: "A torn-open guardrail", location: "I-40 west near Exit 293", sentence: "Nobody's emergency, which is why it would have sat for months. Filed as routine work.", ref: "MR-40092" },
+  { id: "FL-2204", day: "Friday, Jul 31", time: "8:55a", kind: "suppressed", status: "stood down", hazard: "A three-lane closure", location: "I-95 southbound at Atlantic", sentence: "Florida had already posted it, so nothing was sent. Catching what they miss is the job.", ref: "duplicate" },
+  { id: "GA-4465", day: "Friday, Jul 31", time: "5:31a", kind: "watching", status: "watching", hazard: "Something deer-shaped", location: "GA-400 northbound at Holcomb Bridge", sentence: "Grainy pre-dawn frame. Not confident enough to send a crew after a shadow.", ref: "held · 0.69" },
+  { id: "FL-2198", day: "Thursday, Jul 30", time: "4:12p", kind: "cleared", status: "cleared", hazard: "A mattress", location: "Florida's Turnpike at mile 263", sentence: "The turnpike runs its own shop, not the state's — routed there and cleared in under three hours.", ref: "SR-771204" },
+  { id: "NC-1171", day: "Thursday, Jul 30", time: "7:48a", kind: "filed", status: "filed", hazard: "A signal head knocked sideways", location: "US-70 at Miami Boulevard", sentence: "State road, city-owned signal. Went to Durham Public Works instead of the DOT.", ref: "DUR-2026-33871" }
+];
+
+const TONE = { filed: "#2F7A4F", escalated: "#B4451F", watching: "#8A6A10", cleared: "#6B6B65", suppressed: "#9A9A92" };
+
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "filed", label: "Filed" },
+  { key: "watching", label: "Watching" },
+  { key: "escalated", label: "Past due" },
+  { key: "cleared", label: "Cleared" }
+];
+
+class Component extends DCLogic {
+  state = { filter: "all" };
+
+  renderVals() {
+    const active = this.state.filter;
+    const counts = CASES.reduce((a, c) => { a[c.kind] = (a[c.kind] || 0) + 1; return a; }, {});
+    const shown = CASES.filter(c => active === "all" || c.kind === active);
+
+    const order = [];
+    const groups = {};
+    shown.forEach(c => {
+      if (!groups[c.day]) { groups[c.day] = []; order.push(c.day); }
+      groups[c.day].push({
+        hazard: c.hazard, location: c.location, sentence: c.sentence, time: c.time, ref: c.ref, status: c.status,
+        open: () => {},
+        rowStyle: "display:grid;grid-template-columns:10px 1fr;gap:0 16px;align-items:start;padding:16px 14px 18px;"
+          + "margin:0 -14px;border-radius:6px;cursor:pointer;transition:background 120ms ease;"
+          + (c.kind === "suppressed" ? "opacity:0.6;" : ""),
+        dotStyle: "width:8px;height:8px;border-radius:50%;margin-top:9px;background:" + TONE[c.kind] + ";",
+        statusStyle: "letter-spacing:0.08em;text-transform:uppercase;color:" + TONE[c.kind] + ";"
+      });
+    });
+
+    return {
+      summary: CASES.length + " cases this week · " + (counts.filed || 0) + " filed · "
+        + (counts.cleared || 0) + " cleared · " + (counts.watching || 0) + " held below the gate",
+      filters: FILTERS.map(f => ({
+        label: f.label,
+        select: () => this.setState({ filter: f.key }),
+        style: "font-family:'Instrument Sans',sans-serif;font-size:13.5px;background:none;border:none;padding:0 0 4px;cursor:pointer;"
+          + (f.key === active ? "color:#1A1A18;border-bottom:1.5px solid #B4451F;" : "color:#8A8A82;border-bottom:1.5px solid transparent;")
+      })),
+      days: order.map(label => ({ label, entries: groups[label] }))
+    };
+  }
+}
+</script>
+</body>
+</html>

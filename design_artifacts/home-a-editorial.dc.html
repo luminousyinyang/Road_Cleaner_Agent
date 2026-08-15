@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+body { margin: 0; background: #FAFAF8; }
+a { color: #1A1A18; text-decoration: none; }
+a:hover { color: #B4451F; }
+@keyframes rw-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+</style>
+</helmet>
+<div style="background: #FAFAF8; color: #1A1A18; font-family: 'Instrument Sans', system-ui, sans-serif; min-width: 1080px; padding-bottom: 100px;">
+
+  <nav style="display: flex; align-items: center; gap: 30px; padding: 26px 56px;">
+    <span style="font-weight: 600; font-size: 15px; letter-spacing: -0.01em;">RoadWarden</span>
+    <div style="display: flex; gap: 22px; font-size: 14px;">
+      <a href="#log" style="color: #1A1A18;">Road log</a>
+      <a href="roadwarden-about.dc.html" style="color: #6B6B65;" style-hover="color: #B4451F;">How it works</a>
+    </div>
+    <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6B6B65;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #2F7A4F; animation: rw-breathe 2.4s ease-in-out infinite;"></span>watching now
+    </span>
+  </nav>
+
+  <header style="padding: 76px 56px 0;">
+    <h1 style="margin: 0 0 20px; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 92px; line-height: 0.94; letter-spacing: -0.03em; max-width: 13em;">It finds the hazard, then files the <i style="color: #B4451F;">paperwork.</i></h1>
+    <p style="margin: 0; font-size: 19px; line-height: 1.5; color: #45453F; max-width: 27em;">An agent watching public traffic cameras across three states, around the clock.</p>
+  </header>
+
+  <section id="log" style="margin-top: 82px; padding: 0 56px;">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; padding-bottom: 14px; border-bottom: 1px solid #1A1A18;">
+      <div>
+        <h2 style="margin: 0 0 5px; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 34px; letter-spacing: -0.02em;">The road log</h2>
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #6B6B65;">{{ summary }}</div>
+      </div>
+      <div style="display: flex; gap: 20px; font-size: 13.5px; padding-bottom: 4px;">
+        <sc-for list="{{ filters }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.select }}" style="{{ f.style }}">{{ f.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <sc-for list="{{ cases }}" as="c" hint-placeholder-count="9">
+      <div onClick="{{ c.open }}" style="{{ c.rowStyle }}" style-hover="background: #F2F1EC;">
+        <div style="padding-top: 3px;">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px;">{{ c.id }}</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8A8A82; margin-top: 3px;">{{ c.when }}</div>
+        </div>
+        <div>
+          <div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 26px; line-height: 1.15; letter-spacing: -0.015em;">{{ c.hazard }}</div>
+          <div style="font-size: 14.5px; color: #6B6B65; margin-top: 4px;">{{ c.location }}</div>
+        </div>
+        <div style="padding-top: 5px; font-size: 14.5px; color: #45453F;">{{ c.agency }}</div>
+        <div style="padding-top: 6px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #6B6B65;">{{ c.ref }}</div>
+        <div style="padding-top: 5px; display: flex; align-items: baseline; gap: 12px; justify-content: flex-end;">
+          <span style="{{ c.statusStyle }}">{{ c.status }}</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #B4451F;">→</span>
+        </div>
+      </div>
+    </sc-for>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1000}}">
+const CASES = [
+  { id: "GA-4471", kind: "filed", status: "Filed", hazard: "Truck tire in lane 2", location: "I-285 WB · Camp Creek Pkwy", agency: "Georgia DOT, District 7", ref: "TMC-88213", when: "Mon 2:14p" },
+  { id: "NC-1180", kind: "escalated", status: "Past due", hazard: "Standing water on the shoulder", location: "US-64 E · Tarboro Bypass", agency: "NCDOT, Division 4", ref: "MR-40118 · 2nd", when: "Sat 6:40a" },
+  { id: "FL-2209", kind: "watching", status: "Watching", hazard: "Stalled car, right shoulder", location: "I-4 EB · Mile marker 78.2", agency: "Not yet resolved", ref: "held · 0.72", when: "Sat 1:07p" },
+  { id: "GA-4468", kind: "cleared", status: "Cleared", hazard: "Tire tread, lane 1", location: "I-75 NB · Howell Mill Rd", agency: "Georgia DOT, District 7", ref: "TMC-88198", when: "Mon 2:02p" },
+  { id: "NC-1176", kind: "filed", status: "Filed", hazard: "Guardrail torn open in the median", location: "I-40 W · Exit 293", agency: "NCDOT, Division 5", ref: "MR-40092", when: "Fri 11:22p" },
+  { id: "FL-2204", kind: "suppressed", status: "Stood down", hazard: "Lane closure already in the feed", location: "I-95 SB · Atlantic Blvd", agency: "Nobody — correctly", ref: "duplicate", when: "Fri 8:55a" },
+  { id: "GA-4465", kind: "watching", status: "Watching", hazard: "Deer on the northbound shoulder", location: "GA-400 NB · Holcomb Bridge", agency: "Not yet resolved", ref: "held · 0.69", when: "Fri 5:31a" },
+  { id: "FL-2198", kind: "cleared", status: "Cleared", hazard: "Mattress across two lanes", location: "Florida's Turnpike · MM 263", agency: "Turnpike Enterprise", ref: "SR-771204", when: "Thu 4:12p" },
+  { id: "NC-1171", kind: "filed", status: "Filed", hazard: "Signal head knocked sideways", location: "US-70 @ Miami Blvd", agency: "Durham Public Works", ref: "DUR-2026-33871", when: "Thu 7:48a" }
+];
+
+const TONE = { filed: "#2F7A4F", escalated: "#B4451F", watching: "#8A6A10", cleared: "#6B6B65", suppressed: "#9A9A92" };
+
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "filed", label: "Filed" },
+  { key: "watching", label: "Watching" },
+  { key: "escalated", label: "Past due" },
+  { key: "cleared", label: "Cleared" }
+];
+
+class Component extends DCLogic {
+  state = { filter: "all" };
+
+  renderVals() {
+    const active = this.state.filter;
+    const counts = CASES.reduce((a, c) => { a[c.kind] = (a[c.kind] || 0) + 1; return a; }, {});
+
+    return {
+      summary: CASES.length + " cases this week · " + (counts.filed || 0) + " filed · "
+        + (counts.cleared || 0) + " cleared · " + (counts.watching || 0) + " held below the gate",
+      filters: FILTERS.map(f => ({
+        label: f.label,
+        select: () => this.setState({ filter: f.key }),
+        style: "font-family:'Instrument Sans',sans-serif;font-size:13.5px;background:none;border:none;padding:0 0 4px;cursor:pointer;"
+          + (f.key === active
+            ? "color:#1A1A18;border-bottom:1.5px solid #B4451F;"
+            : "color:#8A8A82;border-bottom:1.5px solid transparent;")
+      })),
+      cases: CASES.filter(c => active === "all" || c.kind === active).map(c => ({
+        id: c.id, when: c.when, hazard: c.hazard, location: c.location,
+        agency: c.agency, ref: c.ref, status: c.status,
+        open: () => {},
+        rowStyle: "display:grid;grid-template-columns:96px 1fr 190px 150px 150px;gap:0 26px;align-items:start;"
+          + "padding:20px 14px 20px 0;border-bottom:1px solid #E6E5DF;cursor:pointer;margin:0 -14px;"
+          + "transition:background 120ms ease;" + (c.kind === "suppressed" ? "opacity:0.62;" : ""),
+        statusStyle: "font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:0.1em;text-transform:uppercase;color:" + TONE[c.kind] + ";"
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

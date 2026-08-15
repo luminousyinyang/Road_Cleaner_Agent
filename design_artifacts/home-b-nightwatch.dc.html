@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Martian+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+body { margin: 0; background: #0E0F0E; }
+a { color: #E8E9E4; text-decoration: none; }
+a:hover { color: #D9A227; }
+@keyframes rw-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+</style>
+</helmet>
+<div style="background: #0E0F0E; color: #E8E9E4; font-family: 'Archivo', system-ui, sans-serif; min-width: 1080px; padding-bottom: 100px;">
+
+  <nav style="display: flex; align-items: center; gap: 30px; padding: 20px 48px; border-bottom: 1px solid #24261F;">
+    <span style="font-family: 'Martian Mono', monospace; font-weight: 600; font-size: 13px; letter-spacing: -0.02em;">roadwarden</span>
+    <div style="display: flex; gap: 22px; font-size: 14px;">
+      <a href="#log" style="color: #E8E9E4;">Road log</a>
+      <a href="roadwarden-about.dc.html" style="color: #85887E;" style-hover="color: #D9A227;">How it works</a>
+    </div>
+    <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 9px; font-family: 'Martian Mono', monospace; font-size: 10.5px; color: #85887E;">
+      <span style="width: 6px; height: 6px; border-radius: 50%; background: #D9A227; animation: rw-breathe 2.2s ease-in-out infinite;"></span>on duty
+    </span>
+  </nav>
+
+  <header style="padding: 84px 48px 0;">
+    <h1 style="margin: 0 0 20px; font-weight: 600; font-size: 68px; line-height: 1.02; letter-spacing: -0.04em; max-width: 15em;">Somebody should be watching mile 78.</h1>
+    <p style="margin: 0; font-size: 18px; line-height: 1.55; color: #A9ACA2; max-width: 30em;">Nobody is. So this files the report instead — and checks back until it's cleared.</p>
+  </header>
+
+  <section id="log" style="margin-top: 84px; padding: 0 48px;">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 40px; margin-bottom: 20px;">
+      <div>
+        <h2 style="margin: 0 0 6px; font-weight: 600; font-size: 28px; letter-spacing: -0.025em;">Road log</h2>
+        <div style="font-family: 'Martian Mono', monospace; font-size: 10.5px; color: #85887E;">{{ summary }}</div>
+      </div>
+      <div style="display: flex; border: 1px solid #2C2F26; border-radius: 4px; overflow: hidden;">
+        <sc-for list="{{ filters }}" as="f" hint-placeholder-count="5">
+          <button onClick="{{ f.select }}" style="{{ f.style }}">{{ f.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 92px 1fr 200px 158px 130px 22px; gap: 0 22px; padding: 0 12px 11px; font-family: 'Martian Mono', monospace; font-size: 9.5px; letter-spacing: 0.12em; color: #6E7167; border-bottom: 1px solid #24261F;">
+      <span>CASE</span><span>HAZARD</span><span>AGENCY</span><span>REFERENCE</span><span>STATUS</span><span></span>
+    </div>
+
+    <sc-for list="{{ cases }}" as="c" hint-placeholder-count="9">
+      <div onClick="{{ c.open }}" style="{{ c.rowStyle }}" style-hover="background: #171A15;">
+        <div style="font-family: 'Martian Mono', monospace; font-size: 11.5px; color: #C6C9BF; padding-top: 2px;">{{ c.id }}</div>
+        <div>
+          <div style="font-size: 17px; font-weight: 500; letter-spacing: -0.012em;">{{ c.hazard }}</div>
+          <div style="font-family: 'Martian Mono', monospace; font-size: 10.5px; color: #7C7F75; margin-top: 5px;">{{ c.location }} · {{ c.when }}</div>
+        </div>
+        <div style="font-size: 14px; color: #A9ACA2; padding-top: 1px;">{{ c.agency }}</div>
+        <div style="font-family: 'Martian Mono', monospace; font-size: 11px; color: #A9ACA2; padding-top: 2px;">{{ c.ref }}</div>
+        <div style="padding-top: 1px; display: flex; align-items: center; gap: 8px;">
+          <span style="{{ c.dotStyle }}"></span>
+          <span style="{{ c.statusStyle }}">{{ c.status }}</span>
+        </div>
+        <div style="font-family: 'Martian Mono', monospace; font-size: 12px; color: #D9A227; text-align: right; padding-top: 2px;">→</div>
+      </div>
+    </sc-for>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1000}}">
+const CASES = [
+  { id: "GA-4471", kind: "filed", status: "filed", hazard: "Truck tire in lane 2", location: "I-285 WB · Camp Creek Pkwy", agency: "Georgia DOT, District 7", ref: "TMC-88213", when: "Mon 2:14p" },
+  { id: "NC-1180", kind: "escalated", status: "past due", hazard: "Standing water on the shoulder", location: "US-64 E · Tarboro Bypass", agency: "NCDOT, Division 4", ref: "MR-40118 · 2nd", when: "Sat 6:40a" },
+  { id: "FL-2209", kind: "watching", status: "watching", hazard: "Stalled car, right shoulder", location: "I-4 EB · MM 78.2", agency: "not yet resolved", ref: "held · 0.72", when: "Sat 1:07p" },
+  { id: "GA-4468", kind: "cleared", status: "cleared", hazard: "Tire tread, lane 1", location: "I-75 NB · Howell Mill Rd", agency: "Georgia DOT, District 7", ref: "TMC-88198", when: "Mon 2:02p" },
+  { id: "NC-1176", kind: "filed", status: "filed", hazard: "Guardrail torn open in the median", location: "I-40 W · Exit 293", agency: "NCDOT, Division 5", ref: "MR-40092", when: "Fri 11:22p" },
+  { id: "FL-2204", kind: "suppressed", status: "stood down", hazard: "Lane closure already in the feed", location: "I-95 SB · Atlantic Blvd", agency: "nobody — correctly", ref: "duplicate", when: "Fri 8:55a" },
+  { id: "GA-4465", kind: "watching", status: "watching", hazard: "Deer on the northbound shoulder", location: "GA-400 NB · Holcomb Bridge", agency: "not yet resolved", ref: "held · 0.69", when: "Fri 5:31a" },
+  { id: "FL-2198", kind: "cleared", status: "cleared", hazard: "Mattress across two lanes", location: "Turnpike · MM 263", agency: "Turnpike Enterprise", ref: "SR-771204", when: "Thu 4:12p" },
+  { id: "NC-1171", kind: "filed", status: "filed", hazard: "Signal head knocked sideways", location: "US-70 @ Miami Blvd", agency: "Durham Public Works", ref: "DUR-2026-33871", when: "Thu 7:48a" }
+];
+
+const TONE = { filed: "#5FA97C", escalated: "#E07A45", watching: "#D9A227", cleared: "#7C7F75", suppressed: "#5E6157" };
+
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "filed", label: "Filed" },
+  { key: "watching", label: "Watching" },
+  { key: "escalated", label: "Past due" },
+  { key: "cleared", label: "Cleared" }
+];
+
+class Component extends DCLogic {
+  state = { filter: "all" };
+
+  renderVals() {
+    const active = this.state.filter;
+    const counts = CASES.reduce((a, c) => { a[c.kind] = (a[c.kind] || 0) + 1; return a; }, {});
+    const filters = FILTERS.map(f => ({
+      label: f.label,
+      select: () => this.setState({ filter: f.key }),
+      style: "font-family:'Archivo',sans-serif;font-size:12.5px;padding:8px 15px;border:none;border-right:1px solid #2C2F26;cursor:pointer;"
+        + (f.key === active ? "background:#E8E9E4;color:#0E0F0E;font-weight:600;" : "background:transparent;color:#85887E;")
+    }));
+    if (filters.length) filters[filters.length - 1].style += "border-right:none;";
+
+    return {
+      summary: CASES.length + " cases this week · " + (counts.filed || 0) + " filed · "
+        + (counts.cleared || 0) + " cleared · " + (counts.watching || 0) + " held below the gate",
+      filters,
+      cases: CASES.filter(c => active === "all" || c.kind === active).map(c => ({
+        id: c.id, when: c.when, hazard: c.hazard, location: c.location,
+        agency: c.agency, ref: c.ref, status: c.status,
+        open: () => {},
+        rowStyle: "display:grid;grid-template-columns:92px 1fr 200px 158px 130px 22px;gap:0 22px;align-items:start;"
+          + "padding:17px 12px;border-bottom:1px solid #1C1E18;cursor:pointer;transition:background 120ms ease;"
+          + (c.kind === "suppressed" ? "opacity:0.58;" : ""),
+        dotStyle: "width:6px;height:6px;border-radius:50%;flex:none;background:" + TONE[c.kind] + ";",
+        statusStyle: "font-family:'Martian Mono',monospace;font-size:10.5px;color:" + TONE[c.kind] + ";"
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

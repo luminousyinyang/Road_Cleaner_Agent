@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+body { margin: 0; background: oklch(0.94 0.004 240); }
+a { color: oklch(0.52 0.13 205); text-decoration: none; }
+a:hover { color: oklch(0.42 0.12 205); }
+@keyframes rw-ping { 0% { transform: scale(1); opacity: 0.55; } 100% { transform: scale(3.2); opacity: 0; } }
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; overflow: hidden; position: relative; background: oklch(0.955 0.004 240); color: oklch(0.26 0.015 250); font-family: 'Helvetica Neue', Helvetica, sans-serif;">
+
+  <div style="position: absolute; inset: 0; background: oklch(0.93 0.005 235);">
+    <svg width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <pattern id="rwC-stripe" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+          <rect width="10" height="10" fill="oklch(0.935 0.005 235)"></rect>
+          <rect width="3.5" height="10" fill="oklch(0.90 0.006 235)"></rect>
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#rwC-stripe)"></rect>
+    </svg>
+    <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+      <span style="font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: 0.24em; color: oklch(0.55 0.01 240); border: 1px dashed oklch(0.55 0.01 240 / 0.55); padding: 12px 18px; background: oklch(0.955 0.004 240 / 0.75);">LEAFLET · OSM TILES · SOUTHEAST CAMERA FLEET</span>
+    </div>
+    <div style="position: absolute; left: 47%; top: 41%;">
+      <div style="position: absolute; width: 14px; height: 14px; border-radius: 50%; background: oklch(0.58 0.15 30); animation: rw-ping 2.6s ease-out infinite;"></div>
+      <div style="width: 14px; height: 14px; border-radius: 50%; background: oklch(0.58 0.15 30); border: 2px solid oklch(0.99 0 0);"></div>
+    </div>
+    <div style="position: absolute; left: 62%; top: 58%; width: 11px; height: 11px; border-radius: 50%; background: oklch(0.55 0.13 205); border: 2px solid oklch(0.99 0 0);"></div>
+    <div style="position: absolute; left: 38%; top: 66%; width: 11px; height: 11px; border-radius: 50%; background: oklch(0.55 0.13 205); border: 2px solid oklch(0.99 0 0);"></div>
+    <div style="position: absolute; left: 55%; top: 30%; width: 11px; height: 11px; border-radius: 50%; background: oklch(0.62 0.14 145); border: 2px solid oklch(0.99 0 0);"></div>
+  </div>
+
+  <header style="position: absolute; top: 0; left: 0; right: 0; height: 62px; background: oklch(0.985 0.003 240 / 0.94); border-bottom: 1px solid oklch(0.26 0.015 250 / 0.14); display: flex; align-items: center; gap: 30px; padding: 0 24px; backdrop-filter: blur(8px);">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 22px; height: 22px; background: oklch(0.26 0.015 250); border-radius: 2px;"></div>
+      <span style="font-size: 17px; font-weight: 700; letter-spacing: -0.025em;">RoadWarden</span>
+    </div>
+    <nav style="display: flex; gap: 26px; font-size: 13px; font-weight: 500;">
+      <span style="border-bottom: 2px solid oklch(0.26 0.015 250); padding: 21px 0 19px;">Live Map</span>
+      <span style="color: oklch(0.50 0.01 250); padding: 21px 0 19px;">Cases</span>
+      <span style="color: oklch(0.50 0.01 250); padding: 21px 0 19px;">Cameras</span>
+      <span style="color: oklch(0.50 0.01 250); padding: 21px 0 19px;">Agencies</span>
+      <span style="color: oklch(0.50 0.01 250); padding: 21px 0 19px;">Pipeline</span>
+    </nav>
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 7px; font-family: 'DM Mono', monospace; font-size: 11px; padding: 7px 12px; background: oklch(0.62 0.14 145 / 0.14); color: oklch(0.42 0.12 145); border-radius: 100px;"><span style="width: 6px; height: 6px; border-radius: 50%; background: oklch(0.58 0.14 145);"></span>4 AGENTS HEALTHY</div>
+      <div style="font-family: 'DM Mono', monospace; font-size: 11px; padding: 7px 12px; border: 1px solid oklch(0.58 0.15 30 / 0.4); color: oklch(0.50 0.15 30); border-radius: 100px;">DRY_RUN</div>
+    </div>
+  </header>
+
+  <div style="position: absolute; top: 82px; left: 24px; width: 268px; display: flex; flex-direction: column; gap: 10px;">
+    <div style="background: oklch(0.995 0.002 240); border: 1px solid oklch(0.26 0.015 250 / 0.13); border-radius: 6px; padding: 14px 16px; box-shadow: 0 2px 10px oklch(0.26 0.015 250 / 0.07);">
+      <div style="font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: oklch(0.50 0.01 250); margin-bottom: 12px;">FLEET</div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px 10px;">
+        <div><div style="font-size: 25px; font-weight: 600; letter-spacing: -0.03em; line-height: 1;">2,140</div><div style="font-size: 11px; color: oklch(0.50 0.01 250); margin-top: 3px;">cameras polled</div></div>
+        <div><div style="font-size: 25px; font-weight: 600; letter-spacing: -0.03em; line-height: 1;">14</div><div style="font-size: 11px; color: oklch(0.50 0.01 250); margin-top: 3px;">open cases</div></div>
+        <div><div style="font-size: 25px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; color: oklch(0.50 0.15 30);">62%</div><div style="font-size: 11px; color: oklch(0.50 0.01 250); margin-top: 3px;">missed by 511</div></div>
+        <div><div style="font-size: 25px; font-weight: 600; letter-spacing: -0.03em; line-height: 1;">$2.18</div><div style="font-size: 11px; color: oklch(0.50 0.01 250); margin-top: 3px;">spend / day</div></div>
+      </div>
+    </div>
+    <div style="background: oklch(0.995 0.002 240); border: 1px solid oklch(0.26 0.015 250 / 0.13); border-radius: 6px; padding: 14px 16px; box-shadow: 0 2px 10px oklch(0.26 0.015 250 / 0.07);">
+      <div style="font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: oklch(0.50 0.01 250); margin-bottom: 11px;">COVERAGE</div>
+      <div style="display: flex; flex-direction: column; gap: 9px; font-size: 12.5px;">
+        <div style="display: flex; align-items: center; gap: 9px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.58 0.14 145);"></span>Georgia<span style="margin-left: auto; font-family: 'DM Mono', monospace; font-size: 11px; color: oklch(0.50 0.01 250);">684</span></div>
+        <div style="display: flex; align-items: center; gap: 9px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.58 0.14 145);"></span>Florida<span style="margin-left: auto; font-family: 'DM Mono', monospace; font-size: 11px; color: oklch(0.50 0.01 250);">1,072</span></div>
+        <div style="display: flex; align-items: center; gap: 9px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: oklch(0.58 0.14 145);"></span>North Carolina<span style="margin-left: auto; font-family: 'DM Mono', monospace; font-size: 11px; color: oklch(0.50 0.01 250);">384</span></div>
+        <div style="display: flex; align-items: center; gap: 9px; color: oklch(0.55 0.01 250);"><span style="width: 7px; height: 7px; border-radius: 50%; border: 1px solid oklch(0.60 0.01 250);"></span>AL · TN · SC<span style="margin-left: auto; font-family: 'DM Mono', monospace; font-size: 10px;">PENDING KEY</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="position: absolute; top: 82px; right: 24px; width: 372px; background: oklch(0.995 0.002 240); border: 1px solid oklch(0.26 0.015 250 / 0.13); border-radius: 6px; box-shadow: 0 4px 20px oklch(0.26 0.015 250 / 0.10); overflow: hidden;">
+    <div style="padding: 15px 18px 13px; border-bottom: 1px solid oklch(0.26 0.015 250 / 0.1);">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500;">GA-4471</span>
+        <span style="font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; padding: 4px 9px; background: oklch(0.58 0.15 30 / 0.13); color: oklch(0.47 0.15 30); border-radius: 3px;">DISPATCHED</span>
+      </div>
+      <div style="font-size: 17px; font-weight: 600; letter-spacing: -0.02em; margin-top: 8px;">Debris in travel lane 2</div>
+      <div style="font-size: 12.5px; color: oklch(0.50 0.01 250); margin-top: 3px;">I-285 WB @ Camp Creek Pkwy · GDOT District 7</div>
+    </div>
+    <div style="padding: 14px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px;">
+      <div style="aspect-ratio: 16/10; border-radius: 4px; background: repeating-linear-gradient(45deg, oklch(0.88 0.006 240), oklch(0.88 0.006 240) 4px, oklch(0.92 0.005 240) 4px, oklch(0.92 0.005 240) 8px); border: 2px solid oklch(0.58 0.15 30 / 0.7); display: flex; align-items: flex-end; padding: 6px;"><span style="font-family: 'DM Mono', monospace; font-size: 9px; color: oklch(0.42 0.01 250);">14:02:19</span></div>
+      <div style="aspect-ratio: 16/10; border-radius: 4px; background: repeating-linear-gradient(45deg, oklch(0.88 0.006 240), oklch(0.88 0.006 240) 4px, oklch(0.92 0.005 240) 4px, oklch(0.92 0.005 240) 8px); border: 1px solid oklch(0.26 0.015 250 / 0.16); display: flex; align-items: flex-end; padding: 6px;"><span style="font-family: 'DM Mono', monospace; font-size: 9px; color: oklch(0.42 0.01 250);">14:04:02</span></div>
+    </div>
+    <div style="padding: 0 18px 14px; font-size: 13.5px; line-height: 1.5; color: oklch(0.34 0.015 250); text-wrap: pretty;">Large dark object, likely truck tire tread, in the center travel lane. Two vehicles observed swerving. Persisted across frames 103&nbsp;s apart; no matching 511GA event within 500&nbsp;m.</div>
+    <div style="padding: 12px 18px; border-top: 1px solid oklch(0.26 0.015 250 / 0.1); font-family: 'DM Mono', monospace; font-size: 11.5px; line-height: 2; color: oklch(0.34 0.015 250);">
+      <div style="display: flex; justify-content: space-between;"><span style="color: oklch(0.52 0.01 250);">confidence</span><span>0.94 · high severity</span></div>
+      <div style="display: flex; justify-content: space-between;"><span style="color: oklch(0.52 0.01 250);">channel</span><span>web form (headless)</span></div>
+      <div style="display: flex; justify-content: space-between;"><span style="color: oklch(0.52 0.01 250);">case ref</span><span style="color: oklch(0.47 0.15 30);">TMC-88213</span></div>
+      <div style="display: flex; justify-content: space-between;"><span style="color: oklch(0.52 0.01 250);">next audit</span><span>15:14 EDT · SLA 24h</span></div>
+    </div>
+    <div style="padding: 12px 18px 15px; display: flex; gap: 8px; border-top: 1px solid oklch(0.26 0.015 250 / 0.1);">
+      <button style="flex: 1; font-size: 12.5px; font-weight: 600; padding: 10px; background: oklch(0.26 0.015 250); color: oklch(0.98 0 0); border: none; border-radius: 4px; cursor: pointer;">File live report</button>
+      <button style="font-size: 12.5px; font-weight: 500; padding: 10px 14px; background: transparent; color: oklch(0.34 0.015 250); border: 1px solid oklch(0.26 0.015 250 / 0.2); border-radius: 4px; cursor: pointer;">Trace</button>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 24px; right: 24px; bottom: 20px; background: oklch(0.995 0.002 240); border: 1px solid oklch(0.26 0.015 250 / 0.13); border-radius: 6px; box-shadow: 0 4px 20px oklch(0.26 0.015 250 / 0.10); padding: 13px 18px;">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 11px;">
+      <span style="font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.16em; color: oklch(0.50 0.01 250);">EVENT STREAM · LAST 30 MIN</span>
+      <span style="font-family: 'DM Mono', monospace; font-size: 10px; color: oklch(0.55 0.01 250);">6,412 frames/hr · 81.4% killed pre-Gemini</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+      <div style="border-left: 2px solid oklch(0.58 0.15 30); padding: 2px 0 2px 11px;">
+        <div style="font-family: 'DM Mono', monospace; font-size: 10.5px; color: oklch(0.52 0.01 250);">14:14:51 · dispatcher</div>
+        <div style="font-size: 13px; font-weight: 500; margin-top: 2px;">GA-4471 filed → GDOT TMC-88213</div>
+      </div>
+      <div style="border-left: 2px solid oklch(0.62 0.14 145); padding: 2px 0 2px 11px;">
+        <div style="font-family: 'DM Mono', monospace; font-size: 10.5px; color: oklch(0.52 0.01 250);">14:09:03 · auditor</div>
+        <div style="font-size: 13px; font-weight: 500; margin-top: 2px;">GA-4468 verified clear, case closed</div>
+      </div>
+      <div style="border-left: 2px solid oklch(0.55 0.13 205); padding: 2px 0 2px 11px;">
+        <div style="font-family: 'DM Mono', monospace; font-size: 10.5px; color: oklch(0.52 0.01 250);">14:07:40 · analyst</div>
+        <div style="font-size: 13px; font-weight: 500; margin-top: 2px;">FL-2209 awaiting 2nd frame (0.72)</div>
+      </div>
+      <div style="border-left: 2px solid oklch(0.70 0.01 250); padding: 2px 0 2px 11px;">
+        <div style="font-family: 'DM Mono', monospace; font-size: 10.5px; color: oklch(0.52 0.01 250);">14:05:12 · gate</div>
+        <div style="font-size: 13px; font-weight: 500; margin-top: 2px;">FL-2204 suppressed — in 511 feed</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}"></script>
+</body>
+</html>
