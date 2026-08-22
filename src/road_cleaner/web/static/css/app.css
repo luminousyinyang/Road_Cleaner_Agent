@@ -488,3 +488,96 @@ a:hover { color: var(--rust); }
   .trail__time { grid-column: 2; padding-top: 0; }
   .trail__text { grid-column: 2; }
 }
+
+/* ------------------------------------------------- generated media
+ *
+ * Everything here is model output, not camera evidence. The rust rule and the
+ * badge are load-bearing: a clip that reads as footage from a public camera
+ * would misrepresent the one thing this project's reports depend on being true.
+ */
+.synth { margin: 30px 0 0; padding-top: 20px; border-top: 2px solid var(--rust); }
+.synth__note {
+  font-family: var(--mono); font-size: 11px; line-height: 1.65;
+  color: var(--muted); margin: 0 0 16px; max-width: 62ch;
+}
+.synth__item { margin: 0 0 22px; }
+.synth__item video,
+.synth__item audio { display: block; width: 100%; max-width: 640px; border-radius: 3px; }
+.synth__item video { background: var(--ink); box-shadow: 4px 4px 0 var(--rule-2); }
+.synth__badge {
+  display: inline-block; margin-top: 8px; padding: 3px 8px;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--rust); background: #FBEDE7; border: 1px solid var(--rust); border-radius: 2px;
+}
+
+/* --- simulation page --- */
+.notice {
+  margin: 26px 0 34px; padding: 18px 20px;
+  background: #FBEDE7; border-left: 3px solid var(--rust); border-radius: 2px;
+}
+.notice p {
+  margin: 0 0 10px; font-family: var(--mono); font-size: 11.5px;
+  line-height: 1.7; color: var(--ink-2); max-width: 74ch;
+}
+.notice p:last-child { margin-bottom: 0; }
+.notice strong { color: var(--rust); }
+
+.pair {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 34px;
+  padding: 30px 0; border-top: 1px solid var(--rule);
+}
+.pair__evidence img {
+  display: block; width: 100%; max-width: 640px;
+  border-radius: 3px; box-shadow: 4px 4px 0 var(--rule-2);
+}
+.pair__meta {
+  margin: 12px 0 6px; font-family: var(--mono);
+  font-size: 11px; color: var(--muted);
+}
+.pair__meta a { color: var(--ink); font-weight: 600; }
+
+.models { padding: 26px 0 60px; border-top: 1px solid var(--rule); }
+.models ul { margin: 10px 0 0; padding-left: 18px; }
+.models li {
+  font-family: var(--mono); font-size: 11.5px;
+  line-height: 1.9; color: var(--ink-2);
+}
+.empty {
+  padding: 40px 0; font-family: var(--mono);
+  font-size: 12px; color: var(--muted);
+}
+
+@media (max-width: 1000px) {
+  .pair { grid-template-columns: 1fr; gap: 24px; }
+}
+
+/* --- generate-a-clip control ------------------------------------------- */
+.gen {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: 0 0 18px;
+}
+.gen__cost {
+  font-family: var(--mono); font-size: 10.5px;
+  color: var(--muted); letter-spacing: 0.02em;
+}
+.gen__cost code {
+  font-size: 10.5px; background: var(--rule);
+  padding: 1px 4px; border-radius: 2px;
+}
+.gen__progress { flex-basis: 100%; margin-top: 4px; }
+.gen__bar {
+  height: 6px; width: 100%; max-width: 640px;
+  background: var(--rule); border-radius: 3px; overflow: hidden;
+}
+.gen__bar span {
+  display: block; height: 100%; width: 0;
+  background: var(--rust); border-radius: 3px;
+  transition: width 400ms ease;
+}
+.gen__status {
+  margin: 7px 0 0; font-family: var(--mono);
+  font-size: 10.5px; color: var(--muted);
+}
+.gen__status.is-error { color: var(--rust); }
+button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }

@@ -31,6 +31,14 @@ class BlobStore(Protocol):
 
     async def delete(self, key: str) -> None: ...
 
+    async def list_keys(self, prefix: str) -> list[str]:
+        """Every key under a prefix, newest first.
+
+        Used to prune superseded generated media -- re-rendering a scenario
+        should replace the old clip rather than pile another 20MB beside it.
+        """
+        ...
+
     async def purge_older_than(self, days: int) -> int:
         """Delete frames past the retention window. Returns how many went.
 

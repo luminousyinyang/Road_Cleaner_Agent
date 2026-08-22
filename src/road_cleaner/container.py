@@ -33,6 +33,7 @@ from road_cleaner.config import (
     CameraSourceKind,
     EventBusKind,
     FilingChannelKind,
+    MediaProviderKind,
     RepositoryKind,
     Settings,
     VisionProvider,
@@ -88,6 +89,13 @@ class Container:
     filing: object
     jurisdiction: JurisdictionRegistry
     scenarios: ScenarioBook | None = None
+    # The simulation surface. `media_blobs` is a *second* blob store, rooted
+    # somewhere other than the evidence frames, so generated clips and camera
+    # stills cannot land in the same place. See `ports/media`.
+    media_blobs: object = None
+    video: object = None
+    speech: object = None
+    music: object = None
 
     @property
     def gate_config(self) -> GateConfig:
@@ -126,6 +134,7 @@ class Container:
             "vision": type(self.vision).__name__,
             "reasoner": type(self.reasoner).__name__,
             "filing": getattr(self.filing, "name", type(self.filing).__name__),
+            "media": type(self.video).__name__,
         }
 
 
@@ -161,6 +170,9 @@ def build_container(
             resolved_clock.now() if simulated else start,
         )
 
+    media_blobs = LocalBlobStore(Path(settings.media_local_path))
+    video, speech, music = _build_media(settings, media_blobs)
+
     return Container(
         settings=settings,
         clock=resolved_clock,
@@ -173,6 +185,10 @@ def build_container(
         filing=_build_filing(settings),
         jurisdiction=JurisdictionRegistry.load(SEEDS_DIR / "agencies.yaml"),
         scenarios=scenarios,
+        media_blobs=media_blobs,
+        video=video,
+        speech=speech,
+        music=music,
     )
 
 
@@ -202,6 +218,44 @@ def _build_blobs(settings: Settings):
 
         return GcsBlobStore(bucket=settings.gcs_bucket, project=settings.google_cloud_project)
     return LocalBlobStore(Path(settings.blob_local_path))
+
+
+def _build_media(settings: Settings, store):
+    """The three simulation adapters, or the cached-replay one for all three.
+
+    Returns `(video, speech, music)`. Unlike every other builder here this does
+    not follow ROAD_CLEANER_MODE -- see the note on `Settings.media_provider`.
+    Video generation is billed per second, so switching it on is always explicit.
+    """
+    if settings.media_provider != MediaProviderKind.VERTEX:
+        from road_cleaner.adapters.media.scripted_media import ScriptedMediaSynthesizer
+
+        replay = ScriptedMediaSynthesizer(Path(settings.media_local_path))
+        return replay, replay, replay
+
+    from road_cleaner.adapters.media.chirp_speech import ChirpSpeechSynthesizer
+    from road_cleaner.adapters.media.lyria_music import LyriaMusicSynthesizer
+    from road_cleaner.adapters.media.veo_video import VeoVideoSynthesizer
+
+    video = VeoVideoSynthesizer(
+        model=settings.veo_model,
+        store=store,
+        project=settings.google_cloud_project,
+        location=settings.vertex_media_location,
+        use_vertex=settings.google_genai_use_vertexai,
+        api_key=settings.google_api_key,
+        timeout_seconds=settings.veo_timeout_seconds,
+        resolution=settings.veo_resolution,
+        enhance_prompt=settings.veo_enhance_prompt,
+    )
+    speech = ChirpSpeechSynthesizer(voice=settings.tts_voice, store=store)
+    music = LyriaMusicSynthesizer(
+        model=settings.lyria_model,
+        store=store,
+        project=settings.google_cloud_project,
+        location=settings.vertex_media_location,
+    )
+    return video, speech, music
 
 
 def _build_bus(settings: Settings):

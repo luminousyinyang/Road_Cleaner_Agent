@@ -7,6 +7,7 @@
     road-cleaner serve      start the dashboard
     road-cleaner cases      list cases in the terminal
     road-cleaner outbox     show what would have been sent
+    road-cleaner simulate   render synthetic AV footage from a real detection
 """
 
 from __future__ import annotations
@@ -325,6 +326,171 @@ def outbox(
         console.print(Panel(path.read_text(), title=path.name, border_style="dim"))
     if len(files) > show:
         console.print(f"[dim]…and {len(files) - show} more. Use --show N to see them.[/]")
+
+
+@app.command()
+def simulate(
+    case: Annotated[str, typer.Option(help="Case id to build a scenario from.")] = "",
+    limit: Annotated[
+        int, typer.Option(help="How many cases to render, when --case is omitted.")
+    ] = 1,
+    duration: Annotated[int, typer.Option(help="Clip length in seconds.")] = 8,
+    provider: Annotated[
+        str, typer.Option(help="scripted (replay cached) or vertex (really call Veo).")
+    ] = "",
+    seed_frame: Annotated[
+        bool, typer.Option(help="Seed image-to-video from the stored evidence frame.")
+    ] = False,
+    video: Annotated[
+        bool,
+        typer.Option(help="Render the clip. --no-video re-does audio without paying for Veo."),
+    ] = True,
+    narrate: Annotated[
+        bool, typer.Option(help="Also render the spoken briefing with Chirp.")
+    ] = False,
+    score: Annotated[bool, typer.Option(help="Also render a Lyria bed for the reel.")] = False,
+    dry_run: Annotated[bool, typer.Option(help="Print the prompts without generating.")] = False,
+) -> None:
+    """Render synthetic AV training footage from real detections.
+
+    Takes a hazard the fleet actually found, and asks Veo to show the same
+    scenario from a dashcam instead of a fixed pole-mounted camera -- the
+    perspective a perception stack trains on, of an edge case that genuinely
+    occurred.
+
+    This is the only place generation happens. It is never on a request path and
+    never in the polling loop, because Veo bills per second of video and takes
+    tens of seconds per clip.
+
+    Everything it writes is labelled synthetic and stored apart from the evidence
+    frames. None of it can reach a filed report.
+    """
+    if provider:
+        # Settings are cached and read from the environment, so an override has
+        # to go through the environment too.
+        import os
+
+        from road_cleaner.config import reset_settings_cache
+
+        os.environ["MEDIA_PROVIDER"] = provider
+        reset_settings_cache()
+    asyncio.run(_simulate(case, limit, duration, seed_frame, video, narrate, score, dry_run))
+
+
+async def _simulate(
+    case_id: str,
+    limit: int,
+    duration: int,
+    seed_frame: bool,
+    want_video: bool,
+    narrate: bool,
+    score: bool,
+    dry_run: bool,
+) -> None:
+    from road_cleaner.adapters.media.scenario_prompt import (
+        UnsimulatableHazardError,
+        scenario_prompt,
+    )
+    from road_cleaner.ports.blob_store import BlobNotFoundError
+    from road_cleaner.ports.media import MediaUnavailableError
+
+    settings = _settings()
+    container = build_container(settings)
+    await container.startup()
+    try:
+        if case_id:
+            detail = await container.repository.get_case_detail(case_id)
+            if detail is None:
+                console.print(f"[red]No such case:[/] {case_id}")
+                raise typer.Exit(1)
+            details = [detail]
+        else:
+            rows = await container.repository.list_cases(state="all", kind="all", limit=50)
+            if not rows:
+                console.print("[dim]No cases. Run `road-cleaner demo` first.[/]")
+                raise typer.Exit(1)
+            details = []
+            for row in rows:
+                if len(details) >= limit:
+                    break
+                got = await container.repository.get_case_detail(row.id)
+                if got is not None:
+                    details.append(got)
+
+        console.print(
+            f"[bold]{type(container.video).__name__}[/] · "
+            f"writing to [dim]{settings.media_local_path}[/]\n"
+        )
+
+        for detail in details:
+            current = detail.case
+            first = detail.detections[0] if detail.detections else None
+            lane = first.lane_position if first else ""
+            try:
+                prompt = scenario_prompt(
+                    current, detail.camera, lane, first.description if first else ""
+                )
+            except UnsimulatableHazardError as exc:
+                console.print(f"[yellow]{current.id} skipped:[/] {exc}")
+                continue
+
+            console.print(Panel(prompt, title=f"{current.id} · prompt", border_style="dim"))
+            if dry_run:
+                continue
+
+            # Seeding image-to-video anchors the clip to the road that was
+            # actually photographed -- but only when the frame is a photograph.
+            # Off by default because in fixture mode it is not: the frames are
+            # flat-shaded synthetic renders with the camera id and timestamp
+            # burned into them, and Veo faithfully reproduces both, yielding a
+            # cartoon with doubled overlay text. Worth turning on once the
+            # camera source is a real 511 feed; useless before then.
+            seed = None
+            mark = next((f for f in current.frame_refs if f.mark and f.blob_key), None)
+            if seed_frame and mark is not None:
+                try:
+                    seed = await container.blobs.get(mark.blob_key)
+                except BlobNotFoundError:
+                    console.print(f"[yellow]Evidence frame missing for {current.id}[/]")
+
+            if want_video:
+                try:
+                    clip = await container.video.render_scenario(
+                        prompt=prompt,
+                        seed_image=seed,
+                        duration_seconds=duration,
+                        frame_id=mark.blob_key if mark else None,
+                        case_id=current.id,
+                    )
+                except MediaUnavailableError as exc:
+                    console.print(f"[red]{current.id} failed:[/] {exc}")
+                    continue
+                console.print(
+                    f"  [green]clip[/] {clip.key}  "
+                    f"[dim]{clip.size_bytes / 1_000_000:.1f} MB · {clip.label}[/]"
+                )
+
+            if narrate:
+                text = (current.explain or current.sentence or "").strip()
+                try:
+                    voice = await container.speech.narrate(text, case_id=current.id)
+                except MediaUnavailableError as exc:
+                    console.print(f"  [red]narration failed:[/] {exc}")
+                else:
+                    console.print(f"  [green]voice[/] {voice.key}")
+
+        if score and not dry_run:
+            try:
+                bed = await container.music.score(
+                    "Restrained ambient instrumental underscore for a documentary "
+                    "about road maintenance. Sparse, unhurried, no drums.",
+                )
+            except MediaUnavailableError as exc:
+                console.print(f"[red]score failed:[/] {exc}")
+            else:
+                console.print(f"[green]score[/] {bed.key}")
+    finally:
+        await container.shutdown()
 
 
 @app.command()

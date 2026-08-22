@@ -33,6 +33,9 @@ cloud = [
     "google-cloud-pubsub>=2.27",
     "google-cloud-secret-manager>=2.24",
     "google-cloud-logging>=3.12",
+    # Chirp 3 HD, for the spoken dispatch briefing. Veo and Lyria need no extra
+    # dependency -- google-genai already exposes generate_videos.
+    "google-cloud-texttospeech>=2.16",
 ]
 dev = [
     "pytest>=8.3",

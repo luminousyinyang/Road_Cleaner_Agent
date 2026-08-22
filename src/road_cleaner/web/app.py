@@ -19,18 +19,59 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from road_cleaner.adapters.media.scenario_prompt import (
+    UnsimulatableHazardError,
+    scenario_prompt,
+)
 from road_cleaner.agents.auditor import Auditor
 from road_cleaner.agents.dispatcher import Dispatcher
-from road_cleaner.config import Settings, get_settings
+from road_cleaner.config import MediaProviderKind, Settings, get_settings
 from road_cleaner.container import build_container
 from road_cleaner.logging import configure_logging, get_logger
 from road_cleaner.ports.blob_store import BlobNotFoundError
+from road_cleaner.ports.media import is_synthetic_key
 from road_cleaner.web import serializers as S
+from road_cleaner.web.jobs import RenderJobs
 
 log = get_logger(__name__)
 
 WEB_DIR = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=str(WEB_DIR / "templates"))
+
+_MEDIA_MIME = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+}
+
+
+def _parse_range(header: str | None, total: int) -> tuple[int, int] | None:
+    """Parse a single `bytes=start-end` range. None means "send the whole thing".
+
+    Only the single-range form is handled, which is all a media element sends.
+    Anything malformed or unsatisfiable falls back to a 200 with the full body --
+    a valid response to any Range request, and better than failing the playback.
+    """
+    if not header or not header.startswith("bytes=") or total == 0:
+        return None
+    span = header[len("bytes=") :].split(",")[0].strip()
+    start_text, _, end_text = span.partition("-")
+    try:
+        if not start_text:
+            # "bytes=-500" means the *last* 500 bytes.
+            length = int(end_text)
+            if length <= 0:
+                return None
+            return max(0, total - length), total - 1
+        start = int(start_text)
+        end = int(end_text) if end_text else total - 1
+    except ValueError:
+        return None
+    end = min(end, total - 1)
+    if start > end or start >= total:
+        return None
+    return start, end
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -43,6 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await container.startup()
         app.state.container = container
         app.state.auditor = Auditor(container, Dispatcher(container))
+        app.state.renders = RenderJobs()
         try:
             yield
         finally:
@@ -123,7 +165,14 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         return TEMPLATES.TemplateResponse(
             request,
             "case.html",
-            {"active": "log", "d": S.case_detail(detail, c.clock.now())},
+            {
+                "active": "log",
+                "d": S.case_detail(detail, c.clock.now()),
+                # Kept out of `case_detail` so the evidence view and the
+                # generated view stay separately assembled -- see media_for_case.
+                "media": S.media_for_case(c.settings.media_local_path, case_id),
+                "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
+            },
         )
 
     @app.get("/about", response_class=HTMLResponse)
@@ -144,6 +193,116 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
             content=data,
             media_type="image/jpeg",
             headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    # ------------------------------------------------------- simulation
+    @app.get("/simulation", response_class=HTMLResponse)
+    async def simulation(request: Request):
+        """Real detections beside the synthetic footage generated from them."""
+        c = request.app.state.container
+        pairs = []
+        for case in await c.repository.list_cases(limit=1000):
+            media = S.media_for_case(c.settings.media_local_path, case.id)
+            if media:
+                pairs.append({"case": S.case_row(case), "media": media})
+        return TEMPLATES.TemplateResponse(
+            request,
+            "simulation.html",
+            {
+                "active": "simulation",
+                "pairs": pairs,
+                "score": S.media_for_case(c.settings.media_local_path, "score"),
+                "veo_model": c.settings.veo_model,
+                "tts_voice": c.settings.tts_voice,
+                "lyria_model": c.settings.lyria_model,
+                "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
+            },
+        )
+
+    @app.post("/api/simulate/{case_id}")
+    async def start_render(request: Request, case_id: str):
+        """Kick off a Veo render for one case. Returns a job to poll.
+
+        Refuses unless MEDIA_PROVIDER=vertex. Generation bills per second of
+        video, so the dashboard must not be able to spend money that the
+        configuration did not explicitly authorise.
+        """
+        c = request.app.state.container
+        if c.settings.media_provider != MediaProviderKind.VERTEX:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Generation is off. Set MEDIA_PROVIDER=vertex to enable it — "
+                    "note that it bills per second of video."
+                ),
+            )
+
+        detail = await c.repository.get_case_detail(case_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail=f"No case {case_id}")
+
+        first = detail.detections[0] if detail.detections else None
+        try:
+            prompt = scenario_prompt(
+                detail.case,
+                detail.camera,
+                first.lane_position if first else "",
+                first.description if first else "",
+            )
+        except UnsimulatableHazardError as exc:
+            # Not an error the user can fix -- it is a rule. 422 rather than 500.
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+
+        job = request.app.state.renders.start(c, case_id, prompt, duration=8)
+        return JSONResponse(job.as_dict(), status_code=202)
+
+    @app.get("/api/simulate/jobs/{job_id}")
+    async def render_status(request: Request, job_id: str):
+        job = request.app.state.renders.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="No such job")
+        return job.as_dict()
+
+    @app.get("/media/{blob_key:path}")
+    async def media(request: Request, blob_key: str):
+        """Serve generated media, with Range support so video can seek.
+
+        Separate from `/frames` on purpose. That route serves camera evidence and
+        hardcodes image/jpeg; this one serves things a model made. Keeping them
+        apart means a generated clip can never be handed back as an evidence
+        frame, and the key prefix is checked rather than assumed.
+
+        Browsers will not scrub a `<video>` without 206 support, and FastAPI's
+        plain `Response` does not provide it, hence the manual handling below.
+        """
+        c = request.app.state.container
+        if not is_synthetic_key(blob_key):
+            raise HTTPException(status_code=404, detail="Not a generated media key")
+        try:
+            data = await c.media_blobs.get(blob_key)
+        except (BlobNotFoundError, ValueError):
+            raise HTTPException(status_code=404, detail="No such media") from None
+
+        mime = _MEDIA_MIME.get(Path(blob_key).suffix.lower(), "application/octet-stream")
+        total = len(data)
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=86400",
+            # Generated, and labelled as such even at the transport layer.
+            "X-Content-Synthetic": "true",
+        }
+
+        span = _parse_range(request.headers.get("range"), total)
+        if span is None:
+            return Response(content=data, media_type=mime, headers=headers)
+
+        start, end = span
+        headers["Content-Range"] = f"bytes {start}-{end}/{total}"
+        return Response(
+            content=data[start : end + 1],
+            status_code=206,
+            media_type=mime,
+            headers=headers,
         )
 
     # --------------------------------------------------------------- api

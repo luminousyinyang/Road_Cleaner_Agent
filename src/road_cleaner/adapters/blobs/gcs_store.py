@@ -67,6 +67,14 @@ class GcsBlobStore:
 
         await asyncio.to_thread(remove)
 
+    async def list_keys(self, prefix: str) -> list[str]:
+        def scan() -> list[str]:
+            blobs = list(self._get_bucket().list_blobs(prefix=prefix))
+            blobs.sort(key=lambda b: b.time_created or datetime.min, reverse=True)
+            return [b.name for b in blobs]
+
+        return await asyncio.to_thread(scan)
+
     async def purge_older_than(self, days: int) -> int:
         """Fallback sweep. The bucket lifecycle rule is the primary mechanism."""
         cutoff = datetime.now(UTC) - timedelta(days=days)

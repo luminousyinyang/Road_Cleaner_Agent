@@ -44,10 +44,27 @@ It is not a chatbot. Nobody talks to Road Cleaner. It runs 24/7, and its output 
 
 **Prize targets (in order):** Individual/Hobbyist ($10K ×2 winners — best odds), The Taskmaster ($20K), Best Multimodal UX ($5K ×2 — vision-heavy pipeline qualifies), Grand Prize ($50K).
 
-**Bonus points plan (all three):**
-- [ ] Blog post on Medium/dev.to: "I built an AI agent that files pothole reports so you don't have to" — must state it was created for this hackathon
-- [ ] LinkedIn post with #AllThingsAgenticHackathon
-- [ ] Integrate a second Google model: **Gemma** (run a small Gemma model on Cloud Run as a cheap pre-filter — see §6.3) ✅ hits the "integrate Gemma/Veo/Lyria" bonus
+**Bonus points plan (max 1.0):**
+- [ ] Blog post on Medium/dev.to: "I built an AI agent that files pothole reports so you don't have to" — must state it was created for this hackathon (0.2)
+- [ ] LinkedIn post with #AllThingsAgenticHackathon (0.2)
+- [x] Three additional Google models, 0.2 each (0.6):
+  - **Veo 3.1** (`veo-3.1-fast-generate-001`) — re-stages a detected hazard as
+    dashcam footage for AV perception training. See §Simulation.
+  - **Chirp 3 HD** (Cloud Text-to-Speech) — reads the dispatch briefing aloud.
+  - **Lyria** (`lyria-002`) — scores the demo reel. The weakest of the three, and
+    the first to cut if time runs short: it is decorative rather than functional.
+
+> **Gemma was the original plan here and does not work.** Gemma is not a
+> serverless publisher model on Vertex — `gemma-3-4b-it`, `gemma-3-27b-it` and
+> `gemma-3n-e4b-it` all return 404 on invocation (checked 2026-08-21). Using it
+> means self-deploying from Model Garden onto a GPU endpoint. The prefilter
+> setting is still there and still works if you point `GEMMA_MODEL` at such an
+> endpoint, but it is off by default and `doctor` warns if you enable it without
+> one. Do not claim Gemma as an integrated model unless that endpoint exists.
+>
+> Related trap: a REST `GET` on a publisher model returns 200 for models the
+> project cannot actually call. Every `veo-*-generate-preview` id reads back fine
+> and 404s on invocation. Only the GA ids work.
 
 ## 4. Hackathon Compliance Checklist
 

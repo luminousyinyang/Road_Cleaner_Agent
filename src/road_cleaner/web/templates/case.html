@@ -59,6 +59,48 @@
       </div>
       {% endif %}
 
+      {# --- generated media: never evidence, always badged --- #}
+      <div class="synth">
+        <p class="section-label">Simulated from this detection</p>
+
+        <div class="gen" id="gen" data-case="{{ d.case.id }}">
+          <button class="btn" id="gen-run" {{ 'disabled' if not gen_enabled }}>
+            Generate dashcam clip
+          </button>
+          {% if gen_enabled %}
+          <span class="gen__cost">Calls Veo · bills per second of video · ~1 min</span>
+          {% else %}
+          <span class="gen__cost">Set <code>MEDIA_PROVIDER=vertex</code> to enable.</span>
+          {% endif %}
+
+          <div class="gen__progress" id="gen-progress" hidden>
+            <div class="gen__bar"><span id="gen-fill"></span></div>
+            <p class="gen__status" id="gen-status"></p>
+          </div>
+        </div>
+
+        <p class="synth__note">
+          Generated footage, not camera evidence. The hazard above was found on a
+          public traffic camera; these clips re-stage it from a dashcam view as
+          training data. Nothing here is ever sent to an agency.
+        </p>
+
+        <div id="gen-output"></div>
+
+        {% for m in media %}
+        <figure class="synth__item">
+          {% if m.kind == 'video' %}
+          <video controls preload="metadata" playsinline width="640" height="360">
+            <source src="{{ m.url }}" type="{{ m.mime }}">
+          </video>
+          {% else %}
+          <audio controls preload="metadata" src="{{ m.url }}"></audio>
+          {% endif %}
+          <figcaption class="synth__badge">{{ m.badge }}</figcaption>
+        </figure>
+        {% endfor %}
+      </div>
+
       <p class="section-label">What I saw</p>
       <p class="prose">{{ d.explain }}</p>
 
@@ -124,4 +166,5 @@
 
 {% block scripts %}
 <script src="/static/js/case.js" defer></script>
+<script src="/static/js/simulate.js" defer></script>
 {% endblock %}

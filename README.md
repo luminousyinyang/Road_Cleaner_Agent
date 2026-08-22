@@ -13,6 +13,13 @@ loop.
 Road Cleaner closes the loop. Nobody talks to it. It runs continuously, and its output is
 *filed reports with case numbers* and a resolution audit trail.
 
+And having found a hazard, it can do one more thing with it. An autonomous driving stack
+sees a million miles of ordinary road and almost no shed truck tyres — rare events are
+precisely what it is short of, and precisely what a fleet of traffic cameras sees all day.
+So once a hazard is confirmed, Road Cleaner can re-stage it from a dashcam view with Veo
+and hand back the footage that was missing. Real detection, synthetic footage, clearly
+labelled as such: see [Simulation](#simulation--synthetic-footage-from-real-hazards).
+
 ---
 
 ## Quickstart — no credentials, no cloud account, four commands
@@ -69,7 +76,8 @@ Being precise about this, because "it works" is doing a lot of work in most READ
 | Confidence gate, SLA, escalation, jurisdiction rules | **Real.** Pure logic, exhaustively tested. |
 | Dashboard, case detail, audit trail, evidence frames | **Real.** Server-rendered from the database. |
 | Camera feeds | **Simulated.** All three state APIs need a developer key (see below). |
-| Vision analysis | **Scripted.** Gemini adapter is written; no key available yet. |
+| Vision analysis | **Scripted by default, Gemini verified.** `gemini-3.7-flash` on Vertex answers live; flip `VISION_PROVIDER=gemini`. |
+| Simulation (Veo / Chirp / Lyria) | **Real, and off by default.** Generated clips are in `data/media/`. Costs money per second of video. |
 | Report filing | **Dry run.** Composed in full, written to disk, never transmitted. |
 | Firestore / GCS / Pub/Sub / Cloud Run | **Written, not exercised.** Deploy scripts included. |
 
@@ -146,10 +154,12 @@ src/road_cleaner/
   jurisdiction/  Rules engine mapping road + location → responsible agency.
   pipeline/      The asyncio supervisor that drives all four agents.
   web/           FastAPI dashboard (Jinja templates, no build step).
-  cli.py         road-cleaner {doctor,seed,demo,run,audit,serve,cases,outbox}
+  cli.py         road-cleaner {doctor,seed,demo,run,audit,serve,cases,outbox,simulate}
 seeds/           Camera registry, agency registry, scenario timeline.
 tests/           unit/ (fast, pure) + integration/ (full pipeline, zero creds).
 deploy/          Dockerfile, deploy.sh, teardown.sh.
+data/frames/     Camera evidence.   ─┐ separate on purpose: see Simulation.
+data/media/      Generated clips.   ─┘
 ```
 
 The UI was built from a set of design comps that are kept locally but gitignored — they're
@@ -174,7 +184,11 @@ The ones that matter:
 | `DRY_RUN` | `true` | The anti-spam master switch. While true, nothing reaches a real agency. |
 | `USE_ADK` | `false` | `true` runs real Google ADK agents for jurisdiction and report prose. |
 | `VISION_PROVIDER` | `auto` | `scripted` or `gemini`. |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | **Verify against the current model list before enabling.** |
+| `GEMINI_MODEL` | `gemini-3.7-flash` | Verified on Vertex 2026-08-18. Introductory pricing ends 2026-12-31, when it doubles to $1.50/$7.50 per 1M tokens — worth re-checking then. |
+| `GEMMA_PREFILTER_ENABLED` | `false` | Needs a self-deployed Model Garden endpoint — Gemma is not serverless on Vertex. |
+| `MEDIA_PROVIDER` | `scripted` | `vertex` really calls Veo/Chirp/Lyria and really bills. Does **not** follow `ROAD_CLEANER_MODE`. |
+| `VEO_MODEL` | `veo-3.1-fast-generate-001` | Use a GA id; every `-preview` id 404s on invocation. |
+| `VERTEX_MEDIA_LOCATION` | `us-central1` | Veo and Lyria are region-pinned and are not served from `global`. |
 | `GATE_MIN_CONFIDENCE` | `0.55` | Below this, a detection is discarded outright. |
 | `GATE_DUPLICATE_RADIUS_METERS` | `500` | How close an official event has to be for us to stay quiet. |
 
@@ -294,6 +308,125 @@ Things worth knowing that only showed up in the building:
 
 ---
 
+## Simulation — synthetic footage from real hazards
+
+The detection pipeline is a scenario miner. It watches public cameras for the road events
+an AV perception stack rarely sees, and every confirmed case is a record of one that
+actually happened — where, on what road, in which lane, described by the analyst.
+
+`road-cleaner simulate` takes that record and asks **Veo** to show the same event from a
+dashcam instead of a pole-mounted camera, which is the perspective a perception stack
+trains on. **Chirp 3 HD** reads the dispatch briefing aloud. **Lyria** scores the reel.
+
+```bash
+road-cleaner simulate --dry-run                    # print the prompts, generate nothing
+road-cleaner simulate --case GA-4462 --provider vertex
+road-cleaner simulate --provider vertex --narrate --score
+road-cleaner serve                                 # then open /simulation
+```
+
+You can also render from the dashboard: a case page has a **Generate dashcam clip** button
+that starts a background job and shows progress until the clip appears. It is disabled
+unless `MEDIA_PROVIDER=vertex`, states the cost next to it, and allows one render per case
+at a time so a double-click cannot bill twice.
+
+The progress bar is **an estimate and says so**. Veo reports no percentage — an operation
+is running or it is done — so the bar is elapsed time against a typical render, capped
+below full while still going. A bar animating to 99% would look better and would be
+telling you something it does not know.
+
+Generation never happens in the polling loop and never as a side effect of loading a page;
+it always takes an explicit command or click. A render is a long-running operation billed
+per second of video and takes roughly **two minutes at 1080p**.
+
+### The line this must not cross
+
+Generated footage is not evidence, and the system is built so that cannot blur:
+
+- Clips are stored in `data/media/`, **not** `data/frames/`, and keyed under `synthetic/`.
+- Re-rendering a case **replaces** its previous clip rather than piling another 20MB beside
+  it. Only media of the same kind is pruned, so a new video never deletes the spoken
+  briefing, and pruning is scoped to one case's own folder. Nothing analogous exists for
+  `data/frames/`: generated clips are regenerable by definition and evidence is not.
+- Every clip is written with a `.json` provenance sidecar naming the model, the prompt and
+  the case it came from. The UI badge reads from that sidecar rather than guessing.
+- `/media` refuses to serve anything outside `synthetic/`; `/frames` serves evidence. A
+  test asserts an evidence key 404s on `/media`.
+- Nothing generated can reach a filed report. A test walks the outbox to confirm it.
+- **Hazards involving a person are never simulated** — `pedestrian_on_highway` is refused
+  by name, not left to the safety filter.
+
+A hazard report backed by generated footage would be a fabricated record. The value of
+this project rests on its reports being checkable, so the separation is the point rather
+than a precaution.
+
+### Notes from wiring it up
+
+- **Gemma does not work on Vertex.** Not as a serverless publisher model — every variant
+  404s. It needs a self-deployed Model Garden GPU endpoint. `doctor` warns if you enable
+  the prefilter without one.
+- **A 200 from a publisher-model `GET` does not mean you can call it.** Every
+  `veo-*-generate-preview` id reads back fine over REST and 404s on invocation. Only the
+  GA ids (`veo-3.1-generate-001`, `veo-3.1-fast-generate-001`) work.
+- **Veo is region-pinned.** It is not served from `global`, so `VERTEX_MEDIA_LOCATION` is
+  a separate setting from `GOOGLE_CLOUD_LOCATION`.
+- **Do not seed image-to-video from fixture frames.** They are flat-shaded synthetic
+  renders with the camera id and timestamp burned in, and Veo faithfully reproduces both —
+  you get a cartoon with doubled overlay text. `--seed-frame` is off by default and worth
+  turning on only against a real 511 feed.
+- **Safety filtering is a real failure mode.** Damaged-guardrail prompts get refused.
+  Describing hazards plainly rather than dramatically gets most of them through.
+- **Lyria writes music, not sound effects.** The road noise and sirens come from Veo's own
+  `generate_audio`.
+- **Veo has a small per-minute quota.** Generating several clips back to back returns 429.
+  The adapter says so in plain words rather than dumping the error.
+
+### Getting the footage to look real
+
+The first pass looked wrong in a specific way: a shed tyre tread rendered as a row of
+car-sized black masses, and an animal ballooned into a morphing blob. Three fixes, in
+descending order of how much they mattered:
+
+1. **Anchor the physical size in the prompt.** "A piece of debris" gives the model nothing
+   to scale against, so it reaches for drama. A stated dimension — "a torn scrap of black
+   rubber, roughly 40 centimetres long, lying completely flat on the asphalt" — does not.
+   Every hazard type in `scenario_prompt.py` carries an anchor like this plus a size clamp
+   written for that hazard, because "never larger than a car wheel" is a sensible limit for
+   tyre debris and nonsense for a stalled sedan or a sheet of standing water.
+2. **Use the real `negative_prompt` field.** Putting "no collision" in the prompt *text* is
+   close to useless — it reads as a mention of a collision. The dedicated parameter is a
+   genuine exclusion, and it is where the scale words belong.
+3. **Do not feed the analyst's prose in unfiltered.** Detection descriptions say things
+   like "Large dark object, likely shed truck tyre tread" — and "large" is exactly the
+   instruction that oversized everything. Descriptions carrying scale words are dropped.
+
+**A comparison object is still an object.** This one cost two rounds of renders. The clamp
+"never larger than a car wheel" did not cap the size of the debris — it put an intact car
+wheel, chrome rim and all, in the middle of the lane. "Normal guardrail height" produced a
+guardrail towering over the bonnet. The model renders every noun you write, including nouns
+you only meant as a measuring stick. So the clamps now refer exclusively to things already
+in the scene — the lane, the passing traffic, the road surface — and the debris phrasing
+avoids the words "tyre" and "wheel" entirely.
+
+**Contradictions get resolved the wrong way.** The placement sentence used to say "directly
+ahead in the car's own lane" for every hazard, including a *roadside* damaged barrier. Veo
+settled that contradiction by swinging the barrier out into the carriageway. Placement is
+now per-hazard: roadside things stay at the roadside.
+
+**The analyst's prose can be dramatic as well as oversized.** "Rail end protruding toward
+the travel lanes" is accurate incident prose and a terrible instruction. The description
+filter drops escalation language ("protruding", "torn open", "blocking") alongside the size
+words.
+
+Two more that helped: naming the road made Veo paint gantry signage, and generated signage
+comes out garbled (one clip read "Howell Mill Road Road"), so the prompt describes the road's
+*character* instead. And `resolution="1080p"` is worth the extra render time.
+
+**`enhance_prompt` cannot be turned off.** Veo rewrites your prompt before rendering and
+reaches for cinema doing it, which is the root of the drama problem. Setting it to `False`
+fails the request outright: *"Veo 3 prompt enhancement cannot be disabled."* The size
+anchors and the negative prompt are the only counterweights available.
+
 ## House rules
 
 These are constraints on what the system may do, not features:
@@ -310,6 +443,9 @@ These are constraints on what the system may do, not features:
 - **Rate respect.** Hard client-side governors under each state's published throttle.
 - **Auditable.** Every filed report keeps its frames, the model's raw output, the gate's
   reasoning, and timestamps. An agency receiving one could check our work.
+- **Generated is never evidence.** Synthetic media is stored apart, badged with the model
+  that made it, and cannot enter the evidence chain of a filed report. Hazards depicting a
+  person are not generated at all.
 
 ## Compliance notes
 
@@ -318,6 +454,8 @@ These are constraints on what the system may do, not features:
 - **No Google Maps content anywhere in the pipeline** (Maps ToS §3.2.3). If a map view is
   ever added it will use Leaflet with OpenStreetMap tiles.
 - Frames are processed transiently; only hazard-positive frames are retained as evidence.
+- Synthetic media generated by Veo, Chirp or Lyria is labelled as generated wherever it is
+  shown, and is never presented as camera footage or attached to a report.
 
 ---
 

@@ -47,6 +47,22 @@ class LocalBlobStore:
         if path.exists():
             await asyncio.to_thread(path.unlink)
 
+    async def list_keys(self, prefix: str) -> list[str]:
+        # Both sides of the relative_to have to be resolved. `self.root` is
+        # whatever was configured -- typically the relative "data/media" -- while
+        # `_path` always resolves, so comparing them directly raises ValueError.
+        root = self.root.resolve()
+        base = self._path(prefix) if prefix else root
+
+        def scan() -> list[str]:
+            if not base.exists():
+                return []
+            found = [p for p in base.rglob("*") if p.is_file()]
+            found.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            return [str(p.relative_to(root)) for p in found]
+
+        return await asyncio.to_thread(scan)
+
     async def purge_older_than(self, days: int) -> int:
         """Delete frames past the retention window.
 

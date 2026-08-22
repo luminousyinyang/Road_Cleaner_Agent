@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Simulation · Road Cleaner{% endblock %}
+
+{% block content %}
+<div class="wrap">
+
+  <header class="hero" id="top">
+    <p class="eyebrow">Simulation</p>
+    <h1>Rare events are the hard part.</h1>
+    <p class="lede">
+      An autonomous stack sees a million miles of ordinary road and almost no shed
+      truck tyres. Road Cleaner already watches public cameras across three states
+      for exactly those events — so once it has found one, it can re-stage it from
+      a dashcam view and hand back the footage that was missing.
+    </p>
+  </header>
+
+  <div class="notice">
+    <p>
+      <strong>Everything on this page is generated.</strong> The detections are
+      real: found on public traffic cameras, gated, and reported to the agency
+      that owns the road. The clips are not. They are re-stagings produced by
+      {{ veo_model }}, seeded by the detection record rather than by the camera
+      image, and they never form part of the evidence attached to a filed report.
+    </p>
+    <p>
+      Hazards involving a person are not simulated at all — the same
+      &ldquo;roads, not people&rdquo; rule that governs the rest of the system.
+    </p>
+  </div>
+
+  {% if not pairs %}
+  <p class="empty">
+    Nothing generated yet. Open any case from the
+    <a href="/">road log</a> and use <strong>Generate dashcam clip</strong>, or run
+    <code>road-cleaner simulate --provider vertex</code> from the terminal.
+    {% if not gen_enabled %}
+    Both need <code>MEDIA_PROVIDER=vertex</code>, which is off right now.
+    {% endif %}
+  </p>
+  {% endif %}
+
+  {% for pair in pairs %}
+  <section class="pair">
+    <div class="pair__evidence">
+      <p class="section-label">What the camera saw</p>
+      {% if pair.case.frame_url %}
+      <img src="{{ pair.case.frame_url }}" alt="Evidence frame for {{ pair.case.id }}"
+           loading="lazy" width="640" height="360">
+      {% endif %}
+      <p class="pair__meta">
+        <a href="/cases/{{ pair.case.id }}">{{ pair.case.id }}</a> ·
+        {{ pair.case.hazard }} · {{ pair.case.location }}
+      </p>
+      <p class="prose">{{ pair.case.sentence }}</p>
+    </div>
+
+    <div class="pair__synthetic">
+      <p class="section-label">What a car would have seen</p>
+      {% for m in pair.media %}
+      <figure class="synth__item">
+        {% if m.kind == 'video' %}
+        <video controls preload="metadata" playsinline width="640" height="360">
+          <source src="{{ m.url }}" type="{{ m.mime }}">
+        </video>
+        {% else %}
+        <audio controls preload="metadata" src="{{ m.url }}"></audio>
+        {% endif %}
+        <figcaption class="synth__badge">{{ m.badge }}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  {% if score %}
+  <section class="pair">
+    <div class="pair__synthetic">
+      <p class="section-label">Reel score · {{ lyria_model }}</p>
+      <p class="synth__note">
+        Instrumental bed for the demo reel. Lyria writes music, not sound effects —
+        the road noise and sirens in the clips above are {{ veo_model }}&rsquo;s own
+        audio track.
+      </p>
+      {% for m in score %}
+      <figure class="synth__item">
+        <audio controls preload="metadata" src="{{ m.url }}"></audio>
+        <figcaption class="synth__badge">{{ m.badge }}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="models">
+    <p class="section-label">Models on this page</p>
+    <ul>
+      <li><strong>{{ veo_model }}</strong> — renders the dashcam clip and its audio.</li>
+      <li><strong>{{ tts_voice }}</strong> — reads the dispatch briefing aloud.</li>
+      <li><strong>{{ lyria_model }}</strong> — scores the reel.</li>
+    </ul>
+  </section>
+
+</div>
+{% endblock %}
