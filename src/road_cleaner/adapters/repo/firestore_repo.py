@@ -71,8 +71,10 @@ class FirestoreCaseRepository:
         return self._db
 
     async def initialize(self) -> None:
-        # Firestore is schemaless; composite indexes are declared in
-        # deploy/firestore.indexes.json and applied by the deploy script.
+        # Firestore is schemaless, but `list_cases` filters on state/kind and
+        # orders by opened_at, which needs composite indexes. They are created by
+        # `deploy/deploy.sh --with-firestore`; without them the first query fails
+        # with FAILED_PRECONDITION and a console link to build the missing index.
         await asyncio.to_thread(self._client)
 
     async def close(self) -> None:
@@ -258,8 +260,19 @@ class FirestoreCaseRepository:
         )
 
     async def list_cases(
-        self, state: str | None = None, kind: str | None = None, limit: int = 100
+        self,
+        state: str | None = None,
+        kind: str | None = None,
+        limit: int = 100,
+        include_synthetic: bool = False,
     ) -> list[Case]:
+        """Cases, newest first. Drill cases excluded unless asked for.
+
+        The synthetic filter is applied in Python rather than as a `where`
+        clause. Firestore cannot match documents that lack a field at all, so a
+        server-side `synthetic == False` would silently drop every case written
+        before the field existed. Volumes here are a few hundred rows.
+        """
         def query():
             col = self._client().collection(CASES)
             if state and state != "all":
@@ -271,19 +284,25 @@ class FirestoreCaseRepository:
             for d in docs:
                 data = d.to_dict()
                 data.pop("correlation_key", None)
-                out.append(Case(**data))
+                case = Case(**data)
+                if include_synthetic or not case.synthetic:
+                    out.append(case)
             return out
 
         return await self._run(query)
 
     async def open_cases(self) -> list[Case]:
+        # Synthetic cases are never re-checked -- the Auditor would go looking
+        # for a camera that does not exist.
         def query():
             docs = self._client().collection(CASES).where("kind", "in", OPEN_KINDS).stream()
             out = []
             for d in docs:
                 data = d.to_dict()
                 data.pop("correlation_key", None)
-                out.append(Case(**data))
+                case = Case(**data)
+                if not case.synthetic:
+                    out.append(case)
             return out
 
         return await self._run(query)

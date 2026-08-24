@@ -30,7 +30,7 @@
   </header>
 
   <section id="loop">
-    <p class="eyebrow">The loop · runs per camera, continuously</p>
+    <p class="eyebrow">The loop · runs per frame, continuously</p>
     <h2>Seven steps, and only one of them is looking at a picture.</h2>
     <div class="steps">
 
@@ -51,8 +51,10 @@
           <h3>Detect</h3>
           <p>A small, cheap model looks first and answers one question: is anything odd here
              at all? Most pictures of a road are an empty road, and they stop here. Whatever
-             survives goes to the vision model for a real answer — what it is, which lane,
-             how bad, how sure.</p>
+             survives goes to the vision model for a real answer — what it is, where in
+             the frame, how bad, how sure. It is asked for a box, not a lane number: from
+             a camera pointed down a road you cannot count the lanes to your left, and a
+             guess dressed as a measurement ends up in a report to a road crew.</p>
         </div>
       </div>
 
@@ -85,8 +87,8 @@
         <div class="step__num">5</div>
         <div>
           <h3>Report</h3>
-          <p>Compose something a maintenance desk will act on — what, where, when, how sure,
-             with timestamped frames attached — and send it the way that agency accepts.
+          <p>Compose something a maintenance desk will act on — what, where, when, and the
+             marked still — and send it the way that agency accepts.
              Open311 where a city supports it, the maintenance form where a DOT publishes one,
              plain structured email everywhere else. Then keep the reference number.</p>
         </div>
@@ -96,10 +98,11 @@
         <div class="step__num">6</div>
         <div>
           <h3>Check back</h3>
-          <p>This is the part that makes it worth building. Go back to the same camera and
-             compare against the original evidence photo. If the road is clear, close the case
-             with a before and after. The checks get further apart as a case ages — but closer
-             together when it's running late.</p>
+          <p>This is the part that makes it worth building. Where there is a fixed camera to
+             go back to, compare against the original evidence photo; if the road is clear,
+             close the case with a before and after. The checks get further apart as a case
+             ages — but closer together when it's running late. A dashcam pass has nothing to
+             return to, and the case says so rather than implying a watch that cannot happen.</p>
         </div>
       </div>
 
@@ -120,18 +123,18 @@
 
 <section class="coverage">
   <div class="wrap">
-    <p class="eyebrow">Where it watches</p>
-    <h2>Three states on duty.</h2>
+    <p class="eyebrow">Where it looks</p>
+    <h2>Whatever is pointed at the road.</h2>
     <p>
-      Georgia, Florida and North Carolina all run the same vendor platform, so one client
-      covers all three. The others are wired and waiting on a developer key — the
-      architecture doesn't change, only the credentials.
+      The model does not care where a frame came from, so neither does the pipeline.
+      What changes between sources is not the detection — it is how much you can do
+      afterwards.
     </p>
     <div class="states">
-      <div class="state"><strong>Georgia</strong><span>511ga.org — cameras, incidents and live stream URLs. The best-documented API in the region.</span></div>
-      <div class="state"><strong>Florida</strong><span>FL511 — the largest camera network in the Southeast, and the one with the most jurisdictional edge cases thanks to the Turnpike.</span></div>
-      <div class="state"><strong>N. Carolina</strong><span>DriveNC — high-refresh still images plus an incident feed that cross-references Waze reports.</span></div>
-      <div class="state state--pending"><strong>SC · TN · AL</strong><span>Architected, pending access. These run different platforms, so each needs its own adapter.</span></div>
+      <div class="state"><strong>A dashcam</strong><span>A phone on a windscreen, or a clip from one. Finds the hazard and files it, with coordinates a crew can drive to. You pass once, so there is nothing to go back to.</span></div>
+      <div class="state"><strong>A fixed camera</strong><span>A public DOT camera at a known location. The same detection, plus the part nobody else does: it goes back, compares against the evidence frame, and escalates until the road is clear.</span></div>
+      <div class="state"><strong>Whose road</strong><span>Eighteen agencies across GA, FL and NC today, matched on rules rather than guessed — the toll authority before the state DOT, the city before the state for a signal head.</span></div>
+      <div class="state state--pending"><strong>Everywhere else</strong><span>The registry is data, not code. Adding a state is adding its DOT and its reporting channel; nothing in the pipeline changes.</span></div>
     </div>
   </div>
 </section>
@@ -163,7 +166,7 @@
       <div class="rule">
         <div class="rule__icon" style="background: var(--forest)"></div>
         <h3>Roads, not people</h3>
-        <p>Public infrastructure cameras only. No faces, no plates, no tracking anything.
+        <p>Roads and what is on them. No faces, no plates, no tracking anything.
            Frames are kept as evidence for a week and then deleted. Every filed report keeps
            its stills, its reasoning and its timestamps, so any agency could audit it.</p>
       </div>
@@ -172,8 +175,8 @@
   </section>
 
   <footer>
-    Road Cleaner runs on public traffic camera feeds published by state departments of
-    transportation. It is not affiliated with any of them.
+    Road Cleaner reads dashcam footage and public traffic camera feeds published by
+    state departments of transportation. It is not affiliated with any of them.
   </footer>
 </div>
 {% endblock %}

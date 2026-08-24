@@ -53,7 +53,9 @@ CREATE TABLE IF NOT EXISTS detections (
     box             TEXT,
     raw_model_json  TEXT NOT NULL DEFAULT '{}',
     model_name      TEXT NOT NULL DEFAULT '',
-    prefilter_passed INTEGER NOT NULL DEFAULT 1
+    prefilter_passed INTEGER NOT NULL DEFAULT 1,
+    -- Whether `box` came from the model or from the lane-name lookup table.
+    box_is_measured INTEGER NOT NULL DEFAULT 0
 );
 -- Supports the gate's persistence check: recent detections for one camera.
 CREATE INDEX IF NOT EXISTS idx_detections_camera ON detections(camera_id, analyzed_at DESC);
@@ -104,7 +106,10 @@ CREATE TABLE IF NOT EXISTS cases (
     frame_refs      TEXT NOT NULL DEFAULT '[]',
     raw_model_json  TEXT NOT NULL DEFAULT '{}',
     box             TEXT,
-    box_label       TEXT NOT NULL DEFAULT ''
+    box_label       TEXT NOT NULL DEFAULT '',
+    -- Drill cases: invented location, generated footage, real pipeline. Never
+    -- filed, never counted in the public statistics. See domain.models.Case.
+    synthetic       INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_cases_state ON cases(state);
 CREATE INDEX IF NOT EXISTS idx_cases_kind ON cases(kind);

@@ -1,0 +1,109 @@
+{
+  "case_id": "NC-1171",
+  "clip_url": "/media/synthetic/NC-1171/2026-08-22T10-20-21-veo-3.1-fast-generate-001.mp4",
+  "duration_seconds": 7.6,
+  "frames": [
+    {
+      "index": 0,
+      "at": 0.4,
+      "stamp": "0.4s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 1,
+      "at": 2.2,
+      "stamp": "2.2s",
+      "state": "found",
+      "found": true,
+      "hazard": "flooding",
+      "hazard_label": "flooding",
+      "lane": "lane_1",
+      "severity": "high",
+      "confidence": 0.88,
+      "description": "A pool of standing water is present across the leftmost travel lane, creating a hydroplaning hazard.",
+      "box": {
+        "x": 0.467,
+        "y": 0.412,
+        "width": 0.07300000000000001,
+        "height": 0.03400000000000003
+      },
+      "box_measured": true,
+      "box_label": "flooding \u00b7 0.88",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 2,
+      "at": 4.0,
+      "stamp": "4.0s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 3,
+      "at": 5.8,
+      "stamp": "5.8s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 4,
+      "at": 7.6,
+      "stamp": "7.6s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    }
+  ],
+  "evidence_url": "/media/synthetic/NC-1171/evidence.jpg",
+  "evidence_at": 2.2,
+  "gate_decision": "watch",
+  "gate_reason": "Only one frame so far. One frame is a maybe, not a yes \u2014 waiting for a second look at least 0s apart.",
+  "gate_note": "Agreement here is across one 8-second pass, not two camera polls 90s apart. On a live camera the persistence rule would still have to be satisfied separately.",
+  "agency": "NCDOT Division 13",
+  "agency_rule": "camera-owner",
+  "agency_rationale": "NCDOT Division 13 \u2014 The 511 APIs tell us who owns each camera. When they do, believe them \u2014 it is better information than anything we could infer.",
+  "report_subject": "Road hazard: standing water across the road in lane 1 on I-40",
+  "report_body": "Reporting a road hazard observed on a public traffic camera.\n\nLocation: I-40 eastbound at Black Mountain grade, in lane 1.\nCamera: NCDOT-CCTV-0117\nFirst observed: Sun Aug 23, 12:10 PM\nConfirmed present at: 12:10 PM\n\nA pool of standing water is present across the leftmost travel lane, creating a hydroplaning hazard.\n\nA timestamped camera frame is attached.\n\nFiled automatically by Road Cleaner. Reply to this thread and a person will see it.",
+  "model_name": "gemini-3.7-flash",
+  "is_scripted": false,
+  "filed": false,
+  "from_cache": false,
+  "cache_note": null,
+  "analyzed_at": "2026-08-23T12:10:45-07:00",
+  "stages": [
+    {
+      "key": "sample",
+      "label": "Sample",
+      "state": "done",
+      "detail": "5 stills across 7.6s of footage"
+    },
+    {
+      "key": "look",
+      "label": "Look",
+      "state": "done",
+      "detail": "1 of 5 frames found something \u00b7 0.88"
+    },
+    {
+      "key": "confirm",
+      "label": "Confirm",
+      "state": "done",
+      "detail": "watch \u2014 Only one frame so far. One frame is a maybe, not a yes \u2014 waiting for a second look at least 0s apart."
+    },
+    {
+      "key": "resolve",
+      "label": "Resolve",
+      "state": "done",
+      "detail": "NCDOT Division 13  (camera-owner)"
+    },
+    {
+      "key": "report",
+      "label": "Report",
+      "state": "done",
+      "detail": "Draft ready \u2014 not sent"
+    }
+  ]
+}

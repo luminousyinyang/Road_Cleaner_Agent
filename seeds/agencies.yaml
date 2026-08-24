@@ -7,9 +7,23 @@
 # time -- it is stable, it is checkable, and getting it wrong means a report
 # lands on the wrong desk and quietly dies.
 #
-# Contact details below are deliberately non-routable (`.invalid` domains and
-# example endpoints). Filling in real ones is a conscious step, taken alongside
-# turning DRY_RUN off -- see the README.
+# Endpoints are the agencies' **real** public reporting pages -- the same forms a
+# person would use. They are here so the dashboard can show exactly where a report
+# would go, rather than a placeholder that reads as unfinished work.
+#
+# Two things follow from that, and both matter:
+#
+# * Email addresses are still deliberately non-routable (`@example.invalid`). An
+#   automated message landing in a real district maintenance inbox is the one
+#   failure here with a person on the other end of it, and published addresses in
+#   a public repository get scraped.
+# * Nothing is transmitted without `DRY_RUN=false` **and** `ALLOW_LIVE_FILING=true`.
+#   Two deliberate switches, because a single environment variable is not enough
+#   to stand between an automated system and a government intake form.
+#
+# The city entries are `maintenance_form`, not `open311`: what these four publish
+# is a web form for people, not a GeoReport v2 API. `Open311Channel` stays in the
+# codebase for cities that do publish one.
 
 agencies:
   # ---------------------------------------------------------------- Georgia
@@ -18,7 +32,7 @@ agencies:
     level: state_dot
     state: GA
     channel: maintenance_form
-    endpoint: https://example.invalid/gdot/d7/maintenance-request
+    endpoint: https://www.dot.ga.gov/Pages/ContactUs.aspx
     ref_label: GEORGIA DOT
     ref_format: TMC-#####
     jurisdiction_note: >-
@@ -30,7 +44,7 @@ agencies:
     level: state_dot
     state: GA
     channel: maintenance_form
-    endpoint: https://example.invalid/gdot/d3/maintenance-request
+    endpoint: https://www.dot.ga.gov/Pages/ContactUs.aspx
     ref_label: GEORGIA DOT
     ref_format: TMC-#####
     jurisdiction_note: West central Georgia, including the I-16 corridor at Macon.
@@ -40,7 +54,7 @@ agencies:
     level: state_dot
     state: GA
     channel: maintenance_form
-    endpoint: https://example.invalid/gdot/d5/maintenance-request
+    endpoint: https://www.dot.ga.gov/Pages/ContactUs.aspx
     ref_label: GEORGIA DOT
     ref_format: TMC-#####
     jurisdiction_note: Southeast Georgia and the coast, including I-95 at Savannah.
@@ -123,7 +137,7 @@ agencies:
     level: state_dot
     state: NC
     channel: maintenance_form
-    endpoint: https://example.invalid/ncdot/div3/maintenance
+    endpoint: https://www.ncdot.gov/contact/Pages/form.aspx?UnitName=debris&sourceUrl=/contact/
     ref_label: NCDOT DIVISION 3
     ref_format: MR-#####
     jurisdiction_note: Southeastern coastal counties, Wilmington area.
@@ -133,7 +147,7 @@ agencies:
     level: state_dot
     state: NC
     channel: maintenance_form
-    endpoint: https://example.invalid/ncdot/div4/maintenance
+    endpoint: https://www.ncdot.gov/contact/Pages/form.aspx?UnitName=debris&sourceUrl=/contact/
     ref_label: NCDOT DIVISION 4
     ref_format: MR-#####
     jurisdiction_note: Eastern piedmont, including the US-64 corridor at Tarboro.
@@ -143,7 +157,7 @@ agencies:
     level: state_dot
     state: NC
     channel: maintenance_form
-    endpoint: https://example.invalid/ncdot/div5/maintenance
+    endpoint: https://www.ncdot.gov/contact/Pages/form.aspx?UnitName=debris&sourceUrl=/contact/
     ref_label: NCDOT DIVISION 5
     ref_format: MR-#####
     jurisdiction_note: The Triangle — Wake, Durham and Franklin counties.
@@ -153,7 +167,7 @@ agencies:
     level: state_dot
     state: NC
     channel: maintenance_form
-    endpoint: https://example.invalid/ncdot/div10/maintenance
+    endpoint: https://www.ncdot.gov/contact/Pages/form.aspx?UnitName=debris&sourceUrl=/contact/
     ref_label: NCDOT DIVISION 10
     ref_format: MR-#####
     jurisdiction_note: Charlotte metro.
@@ -163,7 +177,7 @@ agencies:
     level: state_dot
     state: NC
     channel: maintenance_form
-    endpoint: https://example.invalid/ncdot/div13/maintenance
+    endpoint: https://www.ncdot.gov/contact/Pages/form.aspx?UnitName=debris&sourceUrl=/contact/
     ref_label: NCDOT DIVISION 13
     ref_format: MR-#####
     jurisdiction_note: Western mountains, Asheville area.
@@ -175,8 +189,8 @@ agencies:
     name: Durham Public Works
     level: city
     state: NC
-    channel: open311
-    endpoint: https://example.invalid/durham/open311/v2
+    channel: maintenance_form
+    endpoint: https://www.durhamnc.gov/2996/Durham-One-Call-Online-Request
     ref_label: DURHAM PUBLIC WORKS
     ref_format: DUR-2026-#####
     jurisdiction_note: >-
@@ -187,8 +201,8 @@ agencies:
     name: City of Raleigh — Transportation
     level: city
     state: NC
-    channel: open311
-    endpoint: https://example.invalid/raleigh/open311/v2
+    channel: maintenance_form
+    endpoint: https://raleighnc.gov/fix-it-report-it-request-it/services/report-street-streetlight-and-sidewalk-problems
     ref_label: RALEIGH 311
     ref_format: RAL-2026-#####
     jurisdiction_note: Signals and city streets within Raleigh.
@@ -197,8 +211,8 @@ agencies:
     name: City of Atlanta — Department of Transportation
     level: city
     state: GA
-    channel: open311
-    endpoint: https://example.invalid/atlanta/open311/v2
+    channel: maintenance_form
+    endpoint: https://www.atl311.com/en-US/
     ref_label: ATLANTA 311
     ref_format: ATL-2026-#####
     jurisdiction_note: Signals and city streets within Atlanta.
@@ -207,8 +221,8 @@ agencies:
     name: Fort Lauderdale Public Works
     level: city
     state: FL
-    channel: open311
-    endpoint: https://example.invalid/ftlauderdale/open311/v2
+    channel: maintenance_form
+    endpoint: https://lauderserv.fortlauderdale.gov/311/request/add
     ref_label: FT LAUDERDALE 311
     ref_format: FTL-2026-#####
     jurisdiction_note: Signals and city streets within Fort Lauderdale.

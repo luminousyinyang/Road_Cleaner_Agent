@@ -1,0 +1,151 @@
+{
+  "case_id": "NC-1168",
+  "clip_url": "/media/synthetic/NC-1168/2026-08-22T19-23-39-veo-3.1-fast-generate-001.mp4",
+  "duration_seconds": 7.6,
+  "frames": [
+    {
+      "index": 0,
+      "at": 0.4,
+      "stamp": "0.4s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "lane_2",
+      "severity": "high",
+      "confidence": 0.98,
+      "description": "A large pile of corrugated metal panels is lying directly in the right travel lane.",
+      "box": {
+        "x": 0.433,
+        "y": 0.463,
+        "width": 0.07400000000000001,
+        "height": 0.03999999999999998
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.98",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 1,
+      "at": 2.2,
+      "stamp": "2.2s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "lane_2",
+      "severity": "high",
+      "confidence": 0.98,
+      "description": "A large piece of corrugated sheet metal or roofing debris is lying directly in the travel lane before the intersection.",
+      "box": {
+        "x": 0.397,
+        "y": 0.466,
+        "width": 0.135,
+        "height": 0.067
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.98",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 2,
+      "at": 4.0,
+      "stamp": "4.0s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "lane_2",
+      "severity": "critical",
+      "confidence": 0.99,
+      "description": "A large piece of crumpled corrugated metal debris is lying across the travel lane directly in front of the vehicle.",
+      "box": {
+        "x": 0.305,
+        "y": 0.465,
+        "width": 0.28099999999999997,
+        "height": 0.15299999999999997
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.99",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 3,
+      "at": 5.8,
+      "stamp": "5.8s",
+      "state": "found",
+      "found": true,
+      "hazard": "infrastructure_damage",
+      "hazard_label": "infrastructure damage",
+      "lane": "right_shoulder",
+      "severity": "high",
+      "confidence": 0.96,
+      "description": "A heavily crumpled section of metal guardrail is resting across the hood of a crashed vehicle on the right side of the roadway.",
+      "box": {
+        "x": 0.0,
+        "y": 0.488,
+        "width": 0.608,
+        "height": 0.17900000000000005
+      },
+      "box_measured": true,
+      "box_label": "infrastructure damage \u00b7 0.96",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 4,
+      "at": 7.6,
+      "stamp": "7.6s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    }
+  ],
+  "evidence_url": "/media/synthetic/NC-1168/evidence.jpg",
+  "evidence_at": 5.8,
+  "gate_decision": "watch",
+  "gate_reason": "Looked twice and saw different things \u2014 infrastructure_damage this time, debris before. Not confident enough to report either.",
+  "gate_note": "Agreement here is across one 8-second pass, not two camera polls 90s apart. On a live camera the persistence rule would still have to be satisfied separately.",
+  "agency": "NCDOT Division 5",
+  "agency_rule": "camera-owner",
+  "agency_rationale": "NCDOT Division 5 \u2014 The 511 APIs tell us who owns each camera. When they do, believe them \u2014 it is better information than anything we could infer.",
+  "report_subject": "Road hazard: damaged roadside hardware on US-70",
+  "report_body": "Reporting a road hazard observed on a public traffic camera.\n\nLocation: US-70 eastbound at Miami Boulevard, on the right shoulder.\nCamera: NCDOT-CCTV-1171\nFirst observed: Sun Aug 23, 12:13 PM\nConfirmed present at: 12:13 PM\n\nA heavily crumpled section of metal guardrail is resting across the hood of a crashed vehicle on the right side of the roadway.\n\n4 timestamped camera frames are attached.\n\nFiled automatically by Road Cleaner. Reply to this thread and a person will see it.",
+  "model_name": "gemini-3.7-flash",
+  "is_scripted": false,
+  "filed": false,
+  "from_cache": false,
+  "cache_note": null,
+  "analyzed_at": "2026-08-23T12:14:01-07:00",
+  "stages": [
+    {
+      "key": "sample",
+      "label": "Sample",
+      "state": "done",
+      "detail": "5 stills across 7.6s of footage"
+    },
+    {
+      "key": "look",
+      "label": "Look",
+      "state": "done",
+      "detail": "4 of 5 frames found something \u00b7 0.98 0.98 0.99 0.96"
+    },
+    {
+      "key": "confirm",
+      "label": "Confirm",
+      "state": "done",
+      "detail": "watch \u2014 Looked twice and saw different things \u2014 infrastructure_damage this time, debris before. Not confident enough to report either."
+    },
+    {
+      "key": "resolve",
+      "label": "Resolve",
+      "state": "done",
+      "detail": "NCDOT Division 5  (camera-owner)"
+    },
+    {
+      "key": "report",
+      "label": "Report",
+      "state": "done",
+      "detail": "Draft ready \u2014 not sent"
+    }
+  ]
+}

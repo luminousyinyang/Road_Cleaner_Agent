@@ -21,6 +21,10 @@ dependencies = [
     "python-multipart>=0.0.20",
     # Frame rendering + perceptual hashing
     "pillow>=11.0",
+    # Decoding generated clips into stills for the analyst to look at. Ships a
+    # static ffmpeg binary in the wheel, so the Dockerfile needs no apt-get and
+    # a clean clone needs nothing installed system-wide.
+    "imageio-ffmpeg>=0.5",
 ]
 
 [project.optional-dependencies]

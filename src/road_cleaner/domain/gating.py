@@ -158,12 +158,25 @@ def evaluate(
     # 2. Persistence. One frame is a maybe, not a yes.
     corroborating = find_corroboration(detection, priors, cfg)
     if not corroborating:
-        return GateResult(
-            decision=GateDecision.WATCH,
-            reason=(
+        # Two different reasons land here and they mean different things. Saying
+        # "only one frame so far" when there were several that disagreed about
+        # what they were looking at is misleading, and the disagreement is the
+        # more interesting fact -- it is the gate earning its keep.
+        disagreed = [p for p in priors if p.hazard_type is not detection.hazard_type]
+        if disagreed:
+            others = ", ".join(sorted({p.hazard_type.value for p in disagreed}))
+            reason = (
+                f"Looked twice and saw different things — {detection.hazard_type.value} "
+                f"this time, {others} before. Not confident enough to report either."
+            )
+        else:
+            reason = (
                 "Only one frame so far. One frame is a maybe, not a yes — "
                 f"waiting for a second look at least {cfg.min_frame_gap_seconds}s apart."
-            ),
+            )
+        return GateResult(
+            decision=GateDecision.WATCH,
+            reason=reason,
             mean_confidence=detection.confidence,
         )
 

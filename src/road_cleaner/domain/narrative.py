@@ -16,6 +16,8 @@ not a place to introduce a dependency on a paid API being up.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from road_cleaner.domain.enums import GateDecision, HazardType, Severity, State
 from road_cleaner.domain.models import Agency, Camera, Detection, GateResult
 
@@ -50,31 +52,28 @@ STATE_POSSESSIVE: dict[str, str] = {
     State.SC: "South Carolina",
 }
 
-LANE_PHRASES: dict[str, str] = {
-    "lane_1": "in lane 1",
-    "lane_2": "in lane 2",
-    "lane_3": "in lane 3",
-    "left_shoulder": "on the left shoulder",
-    "right_shoulder": "on the right shoulder",
-    "median": "in the median",
-    "median_barrier": "against the median barrier",
-    "intersection": "in the intersection",
-    "all_lanes": "across every lane",
-    "unknown": "on the roadway",
-}
-
-
-def lane_phrase(lane_position: str) -> str:
-    return LANE_PHRASES.get(lane_position, f"at {lane_position.replace('_', ' ')}")
+# Nothing here phrases a position any more.
+#
+# A camera pointed down a road cannot count the lanes to its left, so the lane
+# number the model returned was a guess -- and it did not stay on screen. It went
+# into case headlines and into the `Location:` line of reports addressed to a
+# state DOT, which is a crew sent to the wrong part of the carriageway. The
+# bounding box says where the hazard is, to the pixel, and says it honestly.
+#
+# `Detection.lane_position` still exists and still carries a coarse position for
+# jurisdiction routing (see the `municipal-signal` rule). It is simply never
+# narrated.
 
 
 def hazard_title(detection: Detection) -> str:
-    """The headline for a case."""
-    base = HAZARD_TITLES[detection.hazard_type]
-    lane = detection.lane_position
-    if lane in ("lane_1", "lane_2", "lane_3"):
-        return f"{base.replace(' in a travel lane', '')} {lane_phrase(lane)}".strip()
-    return base
+    """The headline for a case.
+
+    One title per hazard type, and no position appended. The append it replaces
+    only knew how to strip `" in a travel lane"`, so every other hazard had a
+    lane bolted onto a finished sentence: an animal detected in lane 2 was titled
+    "Animal on the shoulder in lane 2", which is both wrong and self-contradictory.
+    """
+    return HAZARD_TITLES[detection.hazard_type]
 
 
 def location_text(camera: Camera) -> str:
@@ -92,8 +91,7 @@ def explain(detection: Detection, gate: GateResult, camera: Camera) -> str:
     about what was inconclusive.
     """
     observation = HAZARD_OBSERVATIONS[detection.hazard_type]
-    where = lane_phrase(detection.lane_position)
-    parts = [f"There's {observation} {where} on {camera.road}."]
+    parts = [f"There's {observation} on {camera.road}."]
 
     if detection.description:
         parts.append(detection.description.strip().rstrip(".") + ".")
@@ -185,53 +183,83 @@ def escalated_sentence(duration_text: str, tier: int) -> str:
     )
 
 
+def observed_at(moment: datetime) -> str:
+    """When the hazard was seen, phrased once.
+
+    The three callers of `report_body` each formatted this themselves and each
+    did it differently -- two appended "UTC" and one did not, and one of them was
+    passing the wall clock at filing time rather than a moment anybody observed.
+    A timestamp in a report to a road crew is a fact; it gets one rendering.
+    """
+    return moment.strftime("%a %b %-d, %-I:%M %p %Z").strip()
+
+
 def report_body(
     detection: Detection,
-    camera: Camera,
-    first_seen: str,
-    confirmed_at: str,
-    frame_count: int,
+    location: str,
+    observed_at: str,
+    *,
+    attachment_count: int = 0,
+    evidence_url: str | None = None,
     tier: int = 1,
 ) -> str:
     """The message that actually goes to the agency.
 
     Deliberately dry and factual -- the wry voice belongs on our dashboard, not
-    in somebody's maintenance queue. States what was seen, where, when, and how
-    confident we are, then gets out of the way. Always says it was filed by a
-    machine and always offers a human reply path.
+    in somebody's maintenance queue. States what was seen, where and when, then
+    gets out of the way. Always says it was filed by a machine and always offers
+    a human reply path.
+
+    Three things this used to say and no longer does, all of them untrue:
+
+    * **A camera id.** Fine for a fixed CCTV; meaningless for a phone on a
+      windscreen, which is now where most of these come from.
+    * **"Confirmed present at ..."**, which was the wall clock at the moment of
+      filing rather than an observation. On a follow-up sent days later it
+      asserted a confirmation that never happened.
+    * **"N timestamped camera frames are attached"**, when nothing was attached.
+      Two of the three channels post form fields and no files at all, and the
+      email channel silently attaches nothing when the blob store is remote. The
+      sentence now describes what is really enclosed, and links the evidence
+      still when there is a link to give instead.
+
+    `location` is passed in rather than rebuilt from a camera so that this line
+    and the `route` field of the form carry the same string. They used to be
+    built from different sources and disagree inside one submission.
     """
-    lane = lane_phrase(detection.lane_position)
     opener = (
-        "Reporting a road hazard observed on a public traffic camera."
+        "Reporting a road hazard seen from a vehicle dashcam."
         if tier == 1
         else "Following up on a previously reported road hazard that appears unresolved."
     )
-    attachment = (
-        f"{frame_count} timestamped camera frames are attached."
-        if frame_count > 1
-        else "A timestamped camera frame is attached."
-    )
+
+    enclosure = []
+    if attachment_count == 1:
+        enclosure = ["A still from the footage is attached, with the hazard marked."]
+    elif attachment_count > 1:
+        enclosure = [f"{attachment_count} stills from the footage are attached."]
+    if evidence_url:
+        enclosure.append(f"The marked still is also here: {evidence_url}")
+
     return "\n".join(
         [
             opener,
             "",
-            f"Location: {location_text(camera)}, {lane}.",
-            f"Camera: {camera.id}",
-            f"First observed: {first_seen}",
-            f"Confirmed present at: {confirmed_at}",
+            f"Location: {location}.",
+            f"Observed: {observed_at}",
             "",
             detection.description.strip(),
             "",
-            attachment,
-            "",
+            *([*enclosure, ""] if enclosure else []),
             "Filed automatically by Road Cleaner. Reply to this thread and a person will see it.",
         ]
     )
 
 
-def report_subject(detection: Detection, camera: Camera, tier: int = 1) -> str:
+def report_subject(detection: Detection, where: str, tier: int = 1) -> str:
+    """`where` is a road name for a fixed camera, a place for a dropped pin."""
     prefix = "Road hazard" if tier == 1 else f"Follow-up ({_ordinal(tier)} notice) — road hazard"
-    return f"{prefix}: {hazard_title(detection).lower()} on {camera.road}"
+    return f"{prefix}: {hazard_title(detection).lower()} on {where}"
 
 
 def gate_trail_text(gate: GateResult) -> str:

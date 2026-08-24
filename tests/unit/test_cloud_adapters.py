@@ -16,7 +16,7 @@ import pytest
 
 from road_cleaner.adapters.camera.rate_limit import RateLimiter, StateRateLimiters
 from road_cleaner.adapters.camera.vendor511 import Vendor511CameraSource, _parse_time
-from road_cleaner.adapters.vision.gemini_vision import _box_for, _parse_json
+from road_cleaner.adapters.vision.gemini_vision import _box_from, _parse_json, _position
 from road_cleaner.config import Settings
 from road_cleaner.container import build_container
 from road_cleaner.domain.enums import CameraTier
@@ -228,8 +228,249 @@ class TestGeminiResponseParsing:
         """Which the caller turns into a retry, never into 'no hazard'."""
         assert _parse_json(junk) is None
 
-    def test_lane_maps_to_a_box_inside_the_frame(self):
-        for lane in ("lane_1", "lane_2", "lane_3", "right_shoulder", "all_lanes", "nonsense"):
-            box = _box_for(lane)
-            assert box.x >= 0 and box.x + box.width <= 1.001
-            assert box.y >= 0 and box.y + box.height <= 1.001
+
+class TestPosition:
+    """A coarse position, or nothing. Never a lane number.
+
+    This value picks an agency -- `intersection` is what routes a damaged signal
+    head to the city rather than the state DOT -- so a value we do not trust must
+    not be able to reach the routing rules.
+    """
+
+    @pytest.mark.parametrize(
+        "value", ["intersection", "left_shoulder", "right_shoulder", "median", "median_barrier"]
+    )
+    def test_a_position_we_accept_is_kept(self, value):
+        assert _position({"position": value}) == value
+
+    @pytest.mark.parametrize("value", ["lane_1", "lane_2", "lane_3", "all_lanes"])
+    def test_a_lane_number_is_refused(self, value):
+        """An old prompt, a cached reply or a model reaching for its training
+        data can all still answer `lane_2`. None of them get to."""
+        assert _position({"position": value}) == "unknown"
+
+    def test_the_old_key_is_still_read(self):
+        """Responses cached before the rename are still worth something."""
+        assert _position({"lane_position": "median"}) == "median"
+
+    @pytest.mark.parametrize(
+        "payload", [{}, {"position": None}, {"position": ""}, {"position": "somewhere"}]
+    )
+    def test_anything_else_is_unknown(self, payload):
+        assert _position(payload) == "unknown"
+
+    def test_case_and_padding_are_tolerated(self):
+        assert _position({"position": "  Right_Shoulder "}) == "right_shoulder"
+
+
+class TestBoxFromTheModel:
+    """`box_2d` is `[ymin, xmin, ymax, xmax]` on a 0-1000 grid, origin top-left.
+
+    Two orderings to get wrong -- y before x, and 0-1000 rather than 0-1 -- and
+    getting either wrong still yields a box that renders, just over the wrong
+    part of the road. Hence the fixed reference case: [581, 227, 660, 452] was
+    returned for a shredded tyre tread and verified by eye against the frame.
+    """
+
+    def test_the_verified_response_converts_to_the_tyre(self):
+        box = _box_from({"box_2d": [581, 227, 660, 452]})
+        assert (box.x, box.y) == pytest.approx((0.227, 0.581)), "x and y are not swapped"
+        assert (box.width, box.height) == pytest.approx((0.225, 0.079))
+
+    def test_reversed_corners_are_normalised_rather_than_dropped(self):
+        """Models occasionally emit max before min. The box is still recoverable."""
+        assert _box_from({"box_2d": [660, 452, 581, 227]}) == _box_from(
+            {"box_2d": [581, 227, 660, 452]}
+        )
+
+    def test_a_box_running_off_frame_is_clamped_into_it(self):
+        box = _box_from({"box_2d": [-40, 900, 500, 1400]})
+        assert box.x >= 0 and box.y >= 0
+        assert box.x + box.width <= 1.0 and box.y + box.height <= 1.0
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {},                                    # the model declined to place it
+            {"box_2d": None},
+            {"box_2d": [1, 2, 3]},                 # wrong arity
+            {"box_2d": "581,227,660,452"},         # a string, not a list
+            {"box_2d": ["a", "b", "c", "d"]},      # unparseable
+            {"box_2d": [500, 300, 500, 300]},      # zero area
+        ],
+    )
+    def test_nothing_usable_yields_no_box(self, payload):
+        """So the caller falls back to the lane guess instead of drawing a lie."""
+        assert _box_from(payload) is None
+
+
+class TestVisionRetries:
+    """Vertex throttles, and the analyzer has to cope rather than give up.
+
+    Measured: a full-speed demo run with no ceiling produced 165 consecutive
+    429 RESOURCE_EXHAUSTED responses and zero detections.
+    """
+
+    async def test_a_throttled_call_is_retried_and_succeeds(self, monkeypatch):
+        from road_cleaner.adapters.vision import gemini_vision as gv
+
+        calls = {"n": 0}
+
+        class FakeModels:
+            async def generate_content(self, **kw):
+                calls["n"] += 1
+                if calls["n"] < 3:
+                    raise RuntimeError("429 RESOURCE_EXHAUSTED")
+                return type("R", (), {"text": "YES"})()
+
+        class FakeClient:
+            aio = type("A", (), {"models": FakeModels()})()
+
+        analyzer = gv.GeminiVisionAnalyzer(model="m", project="p", max_retries=5)
+        analyzer._client = FakeClient()
+        monkeypatch.setattr(gv.asyncio, "sleep", lambda *_: _noop())
+
+        assert await analyzer._generate("m", ["x"]) == "YES"
+        assert calls["n"] == 3, "should have retried twice before succeeding"
+
+    async def test_a_permanent_error_is_not_retried(self, monkeypatch):
+        """Repeating a 404 just spends money on the same wrong request."""
+        from road_cleaner.adapters.vision import gemini_vision as gv
+
+        calls = {"n": 0}
+
+        class FakeModels:
+            async def generate_content(self, **kw):
+                calls["n"] += 1
+                raise RuntimeError("404 NOT_FOUND")
+
+        class FakeClient:
+            aio = type("A", (), {"models": FakeModels()})()
+
+        analyzer = gv.GeminiVisionAnalyzer(model="m", project="p", max_retries=5)
+        analyzer._client = FakeClient()
+        monkeypatch.setattr(gv.asyncio, "sleep", lambda *_: _noop())
+
+        with pytest.raises(gv.VisionUnavailableError):
+            await analyzer._generate("m", ["x"])
+        assert calls["n"] == 1, "a 404 must not be retried"
+
+    async def test_concurrency_is_capped(self):
+        """Without a ceiling the Analyst fires one call per frame, all at once."""
+        import asyncio as aio
+
+        from road_cleaner.adapters.vision import gemini_vision as gv
+
+        peak = {"now": 0, "max": 0}
+
+        class FakeModels:
+            async def generate_content(self, **kw):
+                peak["now"] += 1
+                peak["max"] = max(peak["max"], peak["now"])
+                await aio.sleep(0.01)
+                peak["now"] -= 1
+                return type("R", (), {"text": "ok"})()
+
+        class FakeClient:
+            aio = type("A", (), {"models": FakeModels()})()
+
+        analyzer = gv.GeminiVisionAnalyzer(model="m", project="p", max_concurrency=3)
+        analyzer._client = FakeClient()
+        await aio.gather(*(analyzer._generate("m", ["x"]) for _ in range(20)))
+        assert peak["max"] <= 3, f"ran {peak['max']} calls at once, cap was 3"
+
+
+async def _noop():
+    return None
+
+
+class TestClearancePromptSubstitution:
+    """The clearance prompt ends with a JSON example, and `str.format` read it
+    as format syntax.
+
+    `{"still_present": ...}` is a valid field name to `format`, so every
+    clearance check raised `KeyError: '\\n  "still_present"'`. The Auditor's
+    "is it still there?" call — the thing the whole product is built around —
+    had never run successfully against a real model. The scripted analyzer does
+    not implement this path, so the suite stayed green while it was broken.
+    """
+
+    def test_placeholders_are_filled(self):
+        from road_cleaner.adapters.vision.gemini_vision import _fill
+
+        out = _fill(
+            "Type: {hazard_type}, lane {lane_position}: {description}",
+            hazard_type="debris", lane_position="lane_1", description="tyre tread",
+        )
+        assert out == "Type: debris, lane lane_1: tyre tread"
+
+    def test_json_braces_survive(self):
+        from road_cleaner.adapters.vision.gemini_vision import _fill
+
+        template = 'Hazard {hazard_type}\n\n{\n  "still_present": true\n}'
+        out = _fill(template, hazard_type="debris")
+        assert '"still_present": true' in out
+        assert "debris" in out
+
+    def test_the_real_prompt_renders(self):
+        """Against the actual file, so a future edit that reintroduces a brace
+        problem fails here rather than in production."""
+        from pathlib import Path
+
+        from road_cleaner.adapters.vision.gemini_vision import _fill
+
+        template = (
+            Path("src/road_cleaner/agents/prompts/clearance.md").read_text()
+        )
+        out = _fill(
+            template, hazard_type="debris", lane_position="lane_1",
+            description="shed tyre tread",
+        )
+        assert "{hazard_type}" not in out
+        assert "shed tyre tread" in out
+        assert '"still_present"' in out
+
+
+class TestSharedRetryHelper:
+    """Both model adapters back off the same way.
+
+    ADK had no protection at all. Once the vision adapter stopped monopolising
+    the quota, the jurisdiction agent started taking the 429s instead — and a
+    throttled jurisdiction call means a case is held rather than filed.
+    """
+
+    def test_adk_wrapper_errors_are_recognised_as_transient(self):
+        """ADK raises `_ResourceExhaustedError`, sometimes with no message at
+        all, so the type name has to be inspected and not just the text."""
+        from road_cleaner.adapters.retry import is_transient
+
+        class _ResourceExhaustedError(Exception):
+            pass
+
+        assert is_transient(_ResourceExhaustedError(""))
+        assert is_transient(RuntimeError("429 RESOURCE_EXHAUSTED"))
+        assert is_transient(RuntimeError("503 UNAVAILABLE"))
+        assert not is_transient(RuntimeError("404 NOT_FOUND"))
+        assert not is_transient(ValueError("bad prompt"))
+
+    async def test_cancellation_is_never_swallowed(self):
+        """A retry loop that treats cancellation as a failure to retry will
+        keep a shutting-down process alive."""
+        import asyncio
+
+        from road_cleaner.adapters.retry import with_retry
+
+        async def cancelled():
+            raise asyncio.CancelledError()
+
+        with pytest.raises(asyncio.CancelledError):
+            await with_retry(cancelled, attempts=3)
+
+    async def test_it_gives_up_and_reports_the_last_error(self):
+        from road_cleaner.adapters.retry import with_retry
+
+        async def always_throttled():
+            raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+        with pytest.raises(RuntimeError, match="429"):
+            await with_retry(always_throttled, attempts=2)

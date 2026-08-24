@@ -1,0 +1,12 @@
+{
+  "key": "synthetic/NC-1170/2026-08-22T19-15-55-veo-3.1-fast-generate-001.mp4",
+  "mime_type": "video/mp4",
+  "model_name": "veo-3.1-fast-generate-001",
+  "prompt": "Authentic consumer dashcam footage, recorded through a windscreen from the driver's eye height. Fixed wide-angle lens, everything in focus, no camera moves and no zoom. Flat unedited colour, mild video compression, slight engine vibration. Overcast even daylight, no lens flare, no shallow depth of field, no colour grading. The car holds a steady lane at normal traffic speed. The image is completely clean of any on-screen text: no date, no time stamp, no counter, no logo in any corner. The car is driving on a two-lane divided state highway. Ahead on the road in the car's own lane, about a hundred metres away, is a thin sheet of standing rainwater lying flat across the asphalt, only a few centimetres deep, reflecting the sky, on the right shoulder. It is visible but unremarkable, small at first and growing only as the car gets nearer, the way a real object does. The car approaches at a steady speed and continues past it without stopping. Throughout the shot it keeps exactly the same size and shape, and stays a flat film of water on the road surface with no depth to it.",
+  "seeded_from_frame_id": "NC/NCDOT-CCTV-1180/20260808T065000.jpg",
+  "seeded_from_case_id": "NC-1170",
+  "duration_seconds": 8.0,
+  "size_bytes": 13371632,
+  "created_at": "2026-08-23T02:15:55.157940Z",
+  "synthetic": true
+}

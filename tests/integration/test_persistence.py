@@ -151,3 +151,133 @@ class TestReset:
         elif missing == "outbox":
             Path(settings.filing_outbox).rmdir()
         _reset_state(settings)
+
+
+def _legacy_schema() -> str:
+    """`schema.sql` as it read before the migrated columns were added."""
+    import re
+
+    from road_cleaner.adapters.repo.sqlite_repo import _ADDED_COLUMNS
+
+    text = (
+        Path(__import__("road_cleaner").__file__).parent
+        / "adapters" / "repo" / "schema.sql"
+    ).read_text()
+    names = {n for cols in _ADDED_COLUMNS.values() for n, _ in cols}
+    kept = [ln for ln in text.splitlines()
+            if not any(ln.strip().startswith(n + " ") for n in names)]
+    # Removing a trailing column leaves "...,\n-- comment\n);" behind.
+    return re.sub(r",(\s*(?:--[^\n]*\n\s*)*)\)", r"\1)", "\n".join(kept))
+
+
+class TestOlderDatabasesStillOpen:
+    """`CREATE TABLE IF NOT EXISTS` leaves an existing table alone.
+
+    So a column added after a database was created never appears in it, and
+    every read of that table fails until the file is deleted. `data/road_cleaner.db`
+    holds the demo week -- deleting it to add one column is not an option, and
+    has already gone wrong twice. `_migrate` exists for this; these tests are what
+    keep it honest as columns keep being added.
+    """
+
+    async def _row_count(self, path: Path, table: str) -> int:
+        conn = sqlite3.connect(path)
+        try:
+            return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        finally:
+            conn.close()
+
+    async def test_a_database_missing_a_new_column_gains_it_without_losing_rows(
+        self, tmp_path
+    ):
+        settings = _settings(tmp_path)
+        container = build_container(settings, simulated=True)
+        await container.startup()
+        runner = PipelineRunner(container)
+        await runner.seed()
+        await runner.run_simulated(minutes=900, step_seconds=600)
+        await container.shutdown()
+
+        path = Path(settings.sqlite_path)
+        before = await self._row_count(path, "cases")
+        assert before, "fixture run wrote nothing, so this proves nothing"
+
+        # Rebuild the file with the schema as it stood before those columns
+        # existed, which is the situation that actually occurs -- rather than
+        # DROP COLUMN, which SQLite refuses on a trailing column anyway.
+        from road_cleaner.adapters.repo.sqlite_repo import _ADDED_COLUMNS
+
+        rows = {}
+        conn = sqlite3.connect(path)
+        conn.row_factory = sqlite3.Row
+        for table in _ADDED_COLUMNS:
+            rows[table] = [dict(r) for r in conn.execute(f"SELECT * FROM {table}")]
+        conn.close()
+        path.unlink()
+        for sidecar in (path.with_suffix(".db-wal"), path.with_suffix(".db-shm")):
+            sidecar.unlink(missing_ok=True)
+
+        conn = sqlite3.connect(path)
+        conn.executescript(_legacy_schema())
+        for table, saved in rows.items():
+            for row in saved:
+                keep = {k: v for k, v in row.items()
+                        if k not in {n for n, _ in _ADDED_COLUMNS[table]}}
+                conn.execute(
+                    f"INSERT INTO {table} ({','.join(keep)}) "
+                    f"VALUES ({','.join('?' * len(keep))})",
+                    tuple(keep.values()),
+                )
+        conn.commit()
+        conn.close()
+
+        # Reopening must migrate rather than fail, and must not touch the data.
+        repo = SqliteCaseRepository(path)
+        await repo.initialize()
+        try:
+            cases = await repo.list_cases()
+            assert len(cases) == before
+        finally:
+            await repo.close()
+
+    async def test_migrating_twice_is_a_no_op(self, tmp_path):
+        """Startup runs it every time; the second run must not raise."""
+        path = tmp_path / "twice.db"
+        for _ in range(2):
+            repo = SqliteCaseRepository(path)
+            await repo.initialize()
+            await repo.close()
+
+
+class TestReSavingACase:
+    """A case's description has to be able to change without contradicting itself."""
+
+    async def test_the_hazard_type_and_its_title_move_together(self, tmp_path):
+        """Regression: the upsert updated the title but not the type.
+
+        A case re-saved after being re-derived from its own footage came back
+        titled "Debris in a travel lane" while still typed `animal`, so the
+        headline and the badge on the same page disagreed about what it was.
+        """
+        from road_cleaner.domain.enums import HazardType
+        from road_cleaner.domain.models import Case
+
+        repo = SqliteCaseRepository(tmp_path / "retype.db")
+        await repo.initialize()
+        try:
+            case = Case(
+                id="GA-0001", camera_id="c", state="GA",
+                hazard_type=HazardType.ANIMAL, hazard_title="Animal near the carriageway",
+                location="I-285 at Camp Creek Pkwy",
+            )
+            await repo.save_case(case)
+
+            case.hazard_type = HazardType.DEBRIS
+            case.hazard_title = "Debris in a travel lane"
+            await repo.save_case(case)
+
+            stored = await repo.get_case("GA-0001")
+            assert stored.hazard_type is HazardType.DEBRIS
+            assert stored.hazard_title == "Debris in a travel lane"
+        finally:
+            await repo.close()

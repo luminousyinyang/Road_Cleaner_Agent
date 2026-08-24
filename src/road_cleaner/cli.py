@@ -8,6 +8,7 @@
     road-cleaner cases      list cases in the terminal
     road-cleaner outbox     show what would have been sent
     road-cleaner simulate   render synthetic AV footage from a real detection
+    road-cleaner reinspect  re-derive cases from their own footage
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from road_cleaner.pipeline.runner import PipelineRunner
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="An agent that watches traffic cameras and files the paperwork.",
+    help="An agent that watches the road and files the paperwork.",
 )
 console = Console()
 
@@ -73,6 +74,8 @@ def doctor() -> None:
         )
     )
 
+    _print_google_surface(settings, container)
+
     missing = settings.missing_for_live()
     if missing:
         console.print("\n[yellow]Not yet configured for live operation:[/]")
@@ -83,6 +86,48 @@ def doctor() -> None:
         )
     else:
         console.print("\n[green]All credentials for the selected adapters are present.[/]")
+
+
+def _print_google_surface(settings: Settings, container) -> None:
+    """Which Google models and services this configuration actually uses.
+
+    The wiring table above lists adapter class names, and in a default local run
+    every one of them is a local implementation -- which reads as "this project
+    uses no Google services" even though the cloud paths are fully built. This
+    panel says what is really in play, and names the model ids, so `doctor` is
+    usable as evidence rather than as a nine-line denial.
+    """
+    on = lambda live: "[green]live[/]" if live else "[dim]off[/]"  # noqa: E731
+
+    rows = [
+        ("Gemini (Vertex AI)", settings.gemini_model,
+         type(container.vision).__name__ == "GeminiVisionAnalyzer"),
+        ("Google ADK agents", "jurisdiction + report prose", settings.use_adk),
+        ("Veo", settings.veo_model, str(settings.media_provider) == "vertex"),
+        ("Chirp 3 HD", settings.tts_voice, str(settings.media_provider) == "vertex"),
+        ("Lyria", settings.lyria_model, str(settings.media_provider) == "vertex"),
+        ("Firestore", settings.firestore_database, str(settings.repository) == "firestore"),
+        ("Cloud Storage", settings.gcs_bucket or "—", str(settings.blob_store) == "gcs"),
+        ("Pub/Sub", "frame.captured / hazard.confirmed", str(settings.event_bus) == "pubsub"),
+    ]
+
+    table = Table(title="Google models and services", header_style="bold")
+    table.add_column("Service")
+    table.add_column("Model / target")
+    table.add_column("Status")
+    for name, target, live in rows:
+        table.add_row(name, f"[dim]{target}[/]", on(live))
+    console.print()
+    console.print(table)
+
+    project = settings.google_cloud_project or "[red]unset[/]"
+    # Two lines rather than one: the single-line form wrapped mid-value in an
+    # 80-column terminal, which is exactly where this will be read from.
+    console.print(f"[dim]project[/]  {project}")
+    console.print(
+        f"[dim]regions[/]  gemini {settings.google_cloud_location}"
+        f"  ·  media {settings.vertex_media_location}"
+    )
 
 
 @app.command()
@@ -529,6 +574,234 @@ def config() -> None:
             rendered = str(value)
         table.add_row(name, rendered)
     console.print(table)
+
+
+REINSPECT_HELP = """Re-derive each case from the clip attached to it.
+
+Runs the real analysis over every case that has footage and caches the result
+beside the clip, so each case page opens on a genuine Gemini run with a real
+box rather than on a button.
+
+Where the clip disagrees with the case -- the record says `animal`, the model
+sees `debris` -- the disagreement is printed. `--adopt` then rewrites the case
+to match its own footage, which is what makes the page true by construction.
+Without it nothing in the database is touched.
+
+Vertex throttles at roughly twenty to thirty vision calls, and this makes five
+per case, so it paces itself and skips work already cached. Re-run it until it
+reports nothing left to do."""
+
+
+@app.command(help=REINSPECT_HELP)
+def reinspect(
+    case_id: Annotated[
+        str, typer.Option("--case", help="Just this one case.")
+    ] = "",
+    adopt: Annotated[
+        bool,
+        typer.Option("--adopt", help="Rewrite each case to match what its clip shows."),
+    ] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Re-run cases that are already cached.")
+    ] = False,
+    pause: Annotated[
+        float, typer.Option("--pause", help="Seconds to wait between cases.")
+    ] = 8.0,
+) -> None:
+    asyncio.run(_reinspect(case_id, adopt, force, pause))
+
+
+async def _reinspect(case_id: str, adopt: bool, force: bool, pause: float) -> None:
+    from road_cleaner.domain import narrative
+    from road_cleaner.pipeline.inspect import (
+        InspectError,
+        Inspector,
+        cached_analysis,
+        clip_for_case,
+    )
+
+    settings = _settings()
+    container = build_container(settings)
+    await container.startup()
+
+    if adopt:
+        _warn_before_rewriting(settings)
+
+    try:
+        cases = await container.repository.list_cases(limit=500)
+        if case_id:
+            cases = [c for c in cases if c.id == case_id]
+            if not cases:
+                console.print(f"[red]No case {case_id}.[/]")
+                raise typer.Exit(1)
+
+        table = Table(header_style="bold")
+        for column in ("Case", "On record", "In the clip", "Verdict"):
+            table.add_column(column)
+
+        skipped = done = 0
+        for case in cases:
+            clip = clip_for_case(settings.media_local_path, case.id)
+            if clip is None:
+                table.add_row(case.id, case.hazard_type.value, "[dim]no clip[/]", "[dim]skipped[/]")
+                continue
+            # A cached run is a real run -- it just already happened. Adopting
+            # from it costs no quota, and skipping the whole case because it was
+            # cached meant `--adopt` quietly did nothing on exactly the cases
+            # that had already been analysed, which is most of them.
+            cached = None if force else cached_analysis(clip)
+            if cached is not None:
+                result = _Cached(cached)
+                skipped += 1
+            else:
+                try:
+                    result = await Inspector(container).run(case.id)
+                except InspectError as exc:
+                    table.add_row(
+                        case.id, case.hazard_type.value, f"[red]{exc}[/]", "[red]failed[/]"
+                    )
+                    continue
+
+            found = [f for f in result.frames if f.get("found")]
+            if not found:
+                table.add_row(
+                    case.id, case.hazard_type.value, "[dim]nothing[/]", "[yellow]no hazard[/]"
+                )
+                continue
+
+            # What the clip mostly shows, rather than what the last frame
+            # happened to say -- a single outlying frame should not redefine a
+            # case when the other four agree.
+            seen = _most_common(f["hazard"] for f in found)
+            # Captured before adopting, which mutates the case in place --
+            # otherwise the row reads "debris -> debris, adopted" and hides the
+            # one thing the table exists to show.
+            was = case.hazard_type.value
+            agrees = seen == was
+            verdict = "[green]agrees[/]" if agrees else "[yellow]differs[/]"
+
+            # A case can agree about the hazard and still be titled wrongly: the
+            # title is written once and persisted, so a case adopted while
+            # `hazard_title` still appended lane numbers is stored as "Debris in
+            # lane 2" and nothing recomputes it. Adopt on a stale title too.
+            stale_title = case.hazard_title != narrative.HAZARD_TITLES.get(
+                case.hazard_type, case.hazard_title
+            )
+            if adopt and (not agrees or stale_title):
+                await _adopt(container, case, result, found, seen, narrative)
+                verdict = "[cyan]adopted[/]" if not agrees else "[cyan]retitled[/]"
+
+            table.add_row(case.id, was, seen, verdict)
+            if cached is None:
+                done += 1
+                # Only pace after real calls. A cached case made none.
+                if pause and case is not cases[-1]:
+                    await asyncio.sleep(pause)
+
+        console.print(table)
+        console.print(
+            f"[green]{done} analysed[/]"
+            + (f", [dim]{skipped} read from cache (use --force to re-run)[/]" if skipped else "")
+        )
+        if not adopt:
+            console.print("[dim]Nothing in the database was changed. Use --adopt to rewrite.[/]")
+    finally:
+        await container.shutdown()
+
+
+class _Cached:
+    """A cached analysis, wearing the shape `_adopt` expects.
+
+    Only the three fields it reads. A dict would do, but then every access
+    would be a string key and the difference between a fresh run and a replayed
+    one would be invisible at the call site.
+    """
+
+    def __init__(self, data: dict) -> None:
+        self.frames = data.get("frames", [])
+        self.clip_url = data.get("clip_url")
+        self.model_name = data.get("model_name")
+
+
+def _warn_before_rewriting(settings: Settings) -> None:
+    """Say what is about to be overwritten, and where the copy is.
+
+    This command rewrites case records in place. The database holds a demo week
+    that cannot be regenerated identically, so a copy is taken first rather than
+    trusting that the run goes well.
+    """
+    import shutil
+    from datetime import datetime
+    from pathlib import Path
+
+    source = Path(settings.sqlite_path)
+    if not source.is_file():
+        return
+    backup = source.with_name(f"{source.stem}.before-reinspect-"
+                              f"{datetime.now():%Y%m%dT%H%M%S}{source.suffix}")
+    shutil.copy2(source, backup)
+    console.print(f"[dim]Copied the database to {backup.name} first.[/]")
+
+
+def _most_common(values) -> str:
+    from collections import Counter
+
+    return Counter(values).most_common(1)[0][0]
+
+
+async def _adopt(container, case, result, found, seen, narrative) -> None:
+    """Rewrite one case to match what its own footage shows.
+
+    Only the fields the clip is evidence about: what the hazard is, how sure we
+    are, and where it sits in frame. The trail, the filings and the agency are
+    the record of what the system actually did at the time, and rewriting those
+    to match a later analysis would be falsifying history rather than correcting
+    a description.
+    """
+    import json
+
+    from road_cleaner.domain.enums import HazardType, Severity
+    from road_cleaner.domain.models import BoundingBox, Detection
+
+    best = max(
+        (f for f in found if f["hazard"] == seen),
+        key=lambda f: f.get("confidence", 0.0),
+    )
+    hazard = HazardType(seen)
+
+    # Rebuilt so the headline comes out of `narrative.hazard_title` -- the same
+    # function that titled the case in the first place. Phrasing a title by hand
+    # here is how two places start disagreeing about what to call the same thing.
+    observed = Detection(
+        camera_id=case.camera_id,
+        frame_id="",
+        hazard_type=hazard,
+        lane_position=best.get("lane", "unknown"),
+        severity=Severity(best.get("severity", case.severity.value)),
+        confidence=float(best.get("confidence", case.confidence)),
+        description=best.get("description", ""),
+        box=BoundingBox(**best["box"]) if best.get("box") else case.box,
+        box_is_measured=bool(best.get("box_measured")),
+        model_name=result.model_name or "unknown",
+    )
+
+    case.hazard_type = observed.hazard_type
+    case.confidence = observed.confidence
+    case.severity = observed.severity
+    case.hazard_title = narrative.hazard_title(observed)
+    case.box = observed.box
+    case.box_label = observed.box_label
+    case.raw_model_json = json.dumps(
+        {
+            "source": "reinspect",
+            "clip": result.clip_url,
+            "model": result.model_name,
+            "frames": result.frames,
+        },
+        indent=2,
+    )
+    case.updated_at = container.clock.now()
+    await container.repository.save_case(case)
 
 
 if __name__ == "__main__":

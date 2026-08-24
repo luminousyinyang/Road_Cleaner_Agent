@@ -74,8 +74,15 @@ _HAZARD_PHRASING = {
     "stalled_vehicle": (
         "one ordinary sedan halted at the roadside with its hazard lights blinking"
     ),
+    # "A short line of cones" rendered them parked neatly along the shoulder,
+    # parallel to the barrier, closing a lane nobody could drive in anyway --
+    # which is why the analyst read the clip as ordinary signed roadworks and
+    # found no hazard. What makes a closure a closure is the taper: cones
+    # angling out of the shoulder and across your lane, so you have to move.
     "unreported_closure": (
-        "a short line of small orange cones, each reaching only shin height"
+        "a line of shin-height orange cones angling diagonally out from the "
+        "shoulder and across the car's own lane, narrowing it to nothing so that "
+        "traffic has to move over into the next lane to get past"
     ),
     "flooding": (
         "a thin sheet of standing rainwater lying flat across the asphalt, only a "
@@ -143,7 +150,10 @@ def scenario_prompt(
         )
     subject = _HAZARD_PHRASING.get(hazard_key, f"{case.hazard_title.lower()}")
 
-    where = _LANE_PHRASING.get(lane, "")
+    # A closure's phrasing already places the cones relative to the driver, and
+    # bolting ", in the left-hand lane" onto a description of a taper across the
+    # car's *own* lane gives the model two different places to put them.
+    where = "" if hazard_key == "unreported_closure" else _LANE_PHRASING.get(lane, "")
     if where:
         subject = f"{subject}, {where}"
 
@@ -173,15 +183,28 @@ def scenario_prompt(
     # into the carriageway. Roadside things stay at the roadside.
     placement = _PLACEMENT.get(hazard_key, _PLACEMENT_IN_LANE)
 
+    # What the driver does about it. Only a closure demands anything: cones that
+    # taper across your lane and that you then drive straight through are not a
+    # closure, they are scenery.
+    manoeuvre = _MANOEUVRE.get(hazard_key, _MANOEUVRE_PASS)
+
     return (
         f"{_STYLE} The car is driving on {road}. {placement}, about a hundred "
         f"metres away, is {subject}.{seen} It is visible but unremarkable, small "
         f"at first and growing only as the car gets nearer, the way a real object "
-        f"does. The car approaches at a steady speed and continues past it without "
-        f"stopping. Throughout the shot it keeps exactly the same size and shape, "
-        f"and {clamp}."
+        f"does. {manoeuvre} Throughout the shot it keeps exactly the same size "
+        f"and shape, and {clamp}."
     )
 
+
+_MANOEUVRE_PASS = "The car approaches at a steady speed and continues past it without stopping."
+
+_MANOEUVRE = {
+    "unreported_closure": (
+        "The car approaches at a steady speed, signals, moves over into the open "
+        "lane alongside, and continues past the coned-off section."
+    ),
+}
 
 _PLACEMENT_IN_LANE = "Ahead on the road in the car's own lane"
 _PLACEMENT_ROADSIDE = "Ahead at the side of the road, off the carriageway"
@@ -211,7 +234,7 @@ _SIZE_CLAMP = {
         "narrow part of one lane and never rises higher than the kerb"
     ),
     "stalled_vehicle": "is the same size as the other cars in the traffic around it",
-    "unreported_closure": "stay low, reaching nowhere near the height of passing traffic",
+    "unreported_closure": "stays low, reaching nowhere near the height of passing traffic",
     "flooding": "stays a flat film of water on the road surface with no depth to it",
     "infrastructure_damage": (
         "stays low and close to the ground at the road edge, well below the "

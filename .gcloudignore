@@ -1,0 +1,32 @@
+# What NOT to upload to Cloud Build.
+#
+# Without this file gcloud uploads the whole working tree -- 1.6 GB, almost all
+# of it `data/frames` (28k JPEGs) and `.venv`. The build only needs the source,
+# the seeds, and the small demo bundle assembled by `deploy/bundle.py`.
+#
+# Note gcloud uses this file INSTEAD of .gitignore once it exists, so anything
+# that must reach the build has to be allowed here explicitly.
+
+.git/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# 1.2 GB of evidence frames and 77 MB of generated clips. The handful the demo
+# actually needs are copied into deploy/_bundle instead -- see the negation below.
+data/
+design_artifacts/
+
+# ...but the demo bundle must ship.
+!deploy/_bundle/
+
+.env
+
+# Docs, by name. NOT a blanket `*.md`: the Gemini vision prompts live in
+# src/road_cleaner/agents/prompts/*.md and are read at runtime, so excluding
+# every markdown file builds an image that dies on startup with
+# FileNotFoundError: analyst.md. Learned the hard way.
+docs/
+CLAUDE.md

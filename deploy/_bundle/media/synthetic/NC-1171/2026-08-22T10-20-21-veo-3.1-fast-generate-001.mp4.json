@@ -1,0 +1,12 @@
+{
+  "key": "synthetic/NC-1171/2026-08-22T10-20-21-veo-3.1-fast-generate-001.mp4",
+  "mime_type": "video/mp4",
+  "model_name": "veo-3.1-fast-generate-001",
+  "prompt": "Authentic consumer dashcam footage, recorded through a windscreen from the driver's eye height. Fixed wide-angle lens, everything in focus, no camera moves and no zoom. Flat unedited colour, mild video compression, slight engine vibration. Overcast even daylight, no lens flare, no shallow depth of field, no colour grading. The car holds a steady lane at normal traffic speed. The car is driving on a wide three-lane interstate highway with a concrete median barrier. Directly ahead in the middle of the car's own lane, lying on the road surface about a hundred metres away, is a shallow sheet of standing rainwater across the asphalt, a few centimetres deep, reflecting the sky, in the left-hand lane. Water sheeting across the eastbound lanes on the Black Mountain grade. It is clearly visible and centred in the frame, small at first and growing only as the car gets nearer, the way a real object does. The car approaches at a steady speed, then eases smoothly into the next lane and passes it. The object stays exactly the same size and shape throughout, never larger than a car wheel.",
+  "seeded_from_frame_id": "NC/NCDOT-CCTV-0117/20260809T033000.jpg",
+  "seeded_from_case_id": "NC-1171",
+  "duration_seconds": 8.0,
+  "size_bytes": 13485837,
+  "created_at": "2026-08-22T17:20:21.823656Z",
+  "synthetic": true
+}

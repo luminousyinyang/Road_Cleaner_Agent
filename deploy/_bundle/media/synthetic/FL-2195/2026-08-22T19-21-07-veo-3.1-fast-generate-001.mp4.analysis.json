@@ -1,0 +1,123 @@
+{
+  "case_id": "FL-2195",
+  "clip_url": "/media/synthetic/FL-2195/2026-08-22T19-21-07-veo-3.1-fast-generate-001.mp4",
+  "duration_seconds": 7.6,
+  "frames": [
+    {
+      "index": 0,
+      "at": 0.4,
+      "stamp": "0.4s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "lane_2",
+      "severity": "high",
+      "confidence": 0.98,
+      "description": "A large strip of black tire tread debris lies across the travel lane directly ahead of traffic.",
+      "box": {
+        "x": 0.414,
+        "y": 0.476,
+        "width": 0.14400000000000007,
+        "height": 0.03300000000000003
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.98",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 1,
+      "at": 2.2,
+      "stamp": "2.2s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "lane_2",
+      "severity": "high",
+      "confidence": 0.92,
+      "description": "A detached dark vehicle bumper or body panel is lying flat in the middle travel lane.",
+      "box": {
+        "x": 0.476,
+        "y": 0.398,
+        "width": 0.06500000000000006,
+        "height": 0.021999999999999964
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.92",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 2,
+      "at": 4.0,
+      "stamp": "4.0s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 3,
+      "at": 5.8,
+      "stamp": "5.8s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 4,
+      "at": 7.6,
+      "stamp": "7.6s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    }
+  ],
+  "evidence_url": "/media/synthetic/FL-2195/evidence.jpg",
+  "evidence_at": 0.4,
+  "gate_decision": "file",
+  "gate_reason": "2 frames agree at 0.95, against a 0.70 bar for high severity. Confirmed \u2014 this one is ours to report.",
+  "gate_note": "Agreement here is across one 8-second pass, not two camera polls 90s apart. On a live camera the persistence rule would still have to be satisfied separately.",
+  "agency": "Florida's Turnpike Enterprise",
+  "agency_rule": "toll-facility",
+  "agency_rationale": "Florida's Turnpike Enterprise \u2014 Toll roads run their own maintenance. Check this first \u2014 it is the rule most often missed, because the road passes straight through a DOT district that has nothing to do with it.",
+  "report_subject": "Road hazard: debris in lane 2 on Florida's Turnpike",
+  "report_body": "Reporting a road hazard observed on a public traffic camera.\n\nLocation: Florida's Turnpike northbound at mile marker 263, in lane 2.\nCamera: FTE-CCTV-0263\nFirst observed: Sun Aug 23, 12:12 PM\nConfirmed present at: 12:13 PM\n\nA detached dark vehicle bumper or body panel is lying flat in the middle travel lane.\n\n2 timestamped camera frames are attached.\n\nFiled automatically by Road Cleaner. Reply to this thread and a person will see it.",
+  "model_name": "gemini-3.7-flash",
+  "is_scripted": false,
+  "filed": false,
+  "from_cache": false,
+  "cache_note": null,
+  "analyzed_at": "2026-08-23T12:13:23-07:00",
+  "stages": [
+    {
+      "key": "sample",
+      "label": "Sample",
+      "state": "done",
+      "detail": "5 stills across 7.6s of footage"
+    },
+    {
+      "key": "look",
+      "label": "Look",
+      "state": "done",
+      "detail": "2 of 5 frames found something \u00b7 0.98 0.92"
+    },
+    {
+      "key": "confirm",
+      "label": "Confirm",
+      "state": "done",
+      "detail": "file \u2014 2 frames agree at 0.95, against a 0.70 bar for high severity. Confirmed \u2014 this one is ours to report."
+    },
+    {
+      "key": "resolve",
+      "label": "Resolve",
+      "state": "done",
+      "detail": "Florida's Turnpike Enterprise  (toll-facility)"
+    },
+    {
+      "key": "report",
+      "label": "Report",
+      "state": "done",
+      "detail": "Draft ready \u2014 not sent"
+    }
+  ]
+}

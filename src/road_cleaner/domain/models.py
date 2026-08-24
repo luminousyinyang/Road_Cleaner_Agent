@@ -102,12 +102,24 @@ class Detection(Base):
     frame_id: str
     analyzed_at: datetime = Field(default_factory=utcnow)
     hazard_type: HazardType
+    # A coarse position -- `intersection`, a shoulder, the median, or `unknown`.
+    # Never a lane number: see `narrative` for why, and `vision.POSITIONS` for
+    # the vocabulary. Read by jurisdiction routing and by nothing else.
     lane_position: str
     severity: Severity
     confidence: float
     description: str
     visual_evidence: list[str] = Field(default_factory=list)
     box: BoundingBox | None = None
+    # True when `box` is coordinates somebody actually measured -- either the
+    # vision model returned them, or (in the scripted analyzer) we drew the
+    # hazard there ourselves and know the geometry. False means the box is an
+    # approximation and the UI draws it dashed.
+    #
+    # The lane-name lookup table this once guarded against is gone: a model that
+    # returns no box now yields no box, because a rectangle placed from a field
+    # nobody trusts is the same class of lie as a fabricated case reference.
+    box_is_measured: bool = False
     # The model's response exactly as it came back. Shown verbatim in the UI --
     # if we are going to file paperwork on a machine's say-so, the say-so is
     # part of the record.
@@ -217,6 +229,16 @@ class Case(Base):
     camera_id: str
     state: str
     kind: CaseKind = CaseKind.WATCHING
+
+    # True when the case came from a drill rather than from a camera: an invented
+    # location, generated footage, a real pipeline run over it.
+    #
+    # This is the load-bearing flag in the whole system. A synthetic case may
+    # never be filed, never appears in the road log or the public statistics, and
+    # is badged wherever it is shown. `Dispatcher._file_locked` refuses one
+    # outright rather than trusting callers to check. The parallel for media is
+    # `ports.media.is_synthetic_key`; this extends the same boundary to cases.
+    synthetic: bool = False
     hazard_type: HazardType
     hazard_title: str
     location: str

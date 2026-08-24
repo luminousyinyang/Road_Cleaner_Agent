@@ -7,38 +7,19 @@
  * page and it is still there, because it happened.
  */
 
+/* Two things used to live here and no longer do:
+ *
+ * A wall clock, which showed the *browser's* current time in the header of a
+ * case last updated weeks ago, and read its own `data-since` attribute nowhere.
+ *
+ * A countdown to the "next look", counting down from a hardcoded 90 seconds,
+ * wired to nothing, looping forever -- and still promising another look on cases
+ * that had been closed for days. Both were motion rather than information. The
+ * SLA note now sits in that space and is computed from the case.
+ */
+
 (function () {
   "use strict";
-
-  const CHECK_INTERVAL_SECONDS = 90;
-
-  // --- live clock -----------------------------------------------------
-  const clock = document.getElementById("clock");
-  if (clock) {
-    const tick = () => {
-      clock.textContent = new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-    };
-    tick();
-    setInterval(tick, 1000);
-  }
-
-  // --- countdown to the next scheduled look ---------------------------
-  const countdown = document.getElementById("countdown");
-  if (countdown) {
-    let remaining = CHECK_INTERVAL_SECONDS;
-    const render = () => {
-      const m = String(Math.floor(remaining / 60)).padStart(2, "0");
-      const s = String(remaining % 60).padStart(2, "0");
-      countdown.textContent = `${m}:${s}`;
-      remaining = remaining > 0 ? remaining - 1 : CHECK_INTERVAL_SECONDS;
-    };
-    render();
-    setInterval(render, 1000);
-  }
 
   // --- "Check now" ----------------------------------------------------
   const button = document.getElementById("recheck");
@@ -60,7 +41,15 @@
 
       appendTrail(result);
       refreshFrame(result);
-      button.textContent = result.still_present ? "Still there" : "Road is clear";
+      // The trail entry this writes lands about a thousand pixels further down
+      // the page, so from the button the whole thing looked like it did nothing.
+      // Say what happened where the click happened.
+      announce(result);
+      if (result.ran === false) {
+        button.textContent = "Nothing to check";
+      } else {
+        button.textContent = result.still_present ? "Still there" : "Road is clear";
+      }
     } catch (err) {
       console.error("Re-check failed", err);
       button.textContent = "Couldn't reach the camera";
@@ -71,6 +60,17 @@
       }, 2500);
     }
   });
+
+  function announce(result) {
+    const slot = document.getElementById("recheck-said");
+    if (!slot) return;
+    // The server always sends a `message`. Relying on `trail_entry` here was the
+    // bug: the Auditor can look and find nothing worth writing down, and on a
+    // closed case it does not run at all -- both produced an empty line, which
+    // read as the button being broken.
+    slot.textContent = result.message || "Checked.";
+    slot.hidden = false;
+  }
 
   function appendTrail(result) {
     const trail = document.getElementById("trail");

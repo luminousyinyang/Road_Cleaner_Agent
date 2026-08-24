@@ -71,10 +71,29 @@ class CaseRepository(Protocol):
         state: str | None = None,
         kind: str | None = None,
         limit: int = 100,
-    ) -> list[Case]: ...
+        include_synthetic: bool = False,
+    ) -> list[Case]:
+        """Cases, newest first.
+
+        Drill cases are excluded unless `include_synthetic` asks for them, so a
+        caller has to opt in to seeing invented ones rather than remember to
+        filter them out.
+        """
+        ...
 
     async def open_cases(self) -> list[Case]:
-        """Cases the Auditor still has work to do on."""
+        """Cases the Auditor still has work to do on. Never synthetic ones."""
+        ...
+
+    async def find_recent_case(
+        self, correlation_key: str, since: datetime
+    ) -> Case | None:
+        """The most recent case for this camera+hazard, if one is recent enough.
+
+        Declared here because the Analyst depends on it (`analyst.py`); it was
+        previously implemented on both adapters but missing from the port, which
+        made it invisible to anyone reading the interface.
+        """
         ...
 
     async def next_case_id(self, state: str) -> str:

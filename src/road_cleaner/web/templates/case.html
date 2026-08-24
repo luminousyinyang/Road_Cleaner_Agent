@@ -7,7 +7,6 @@
     <a href="/" class="btn btn--ghost">← Back</a>
     <span class="chip">{{ d.case.id }}</span>
     <h1>{{ d.case.hazard_title }}</h1>
-    <span class="detail__clock" id="clock" data-since="{{ d.case.updated_at.isoformat() }}"></span>
     <span class="watch-pill" style="color: {{ d.tone }}">
       {% if d.watching %}<span class="dot"></span>watching{% else %}{{ d.status }}{% endif %}
     </span>
@@ -17,154 +16,181 @@
 
 {% block content %}
 <div class="wrap">
-  <div class="detail">
+  {# One column now. The sidebar carried a second copy of the report, a
+     reference caveat and an SLA panel that repeated the run below it. #}
+  <div class="detail detail--single">
     <div>
       <p class="detail__meta">{{ d.road }}{% if d.county %} · {{ d.county }} COUNTY{% endif %}</p>
-      <h2>{{ d.case.hazard_title }}</h2>
       <p class="detail__where">{{ d.case.location }}</p>
 
-      {# --- live camera panel --- #}
-      <div class="viewer">
-        <div class="viewer__head">
-          <span class="dot"></span>{{ d.camera_label }}
-          <span class="spacer">last look {{ d.last_checked }}</span>
-        </div>
-        <div class="viewer__body" id="viewer">
-          {% if d.live_frame %}
-            <img src="{{ d.live_frame }}" alt="Latest frame from {{ d.camera_label }}" id="live-frame" width="640" height="360">
-          {% endif %}
-          {% if d.box_style %}
-          <span class="box" style="{{ d.box_style }}">
-            {% if d.box_label %}<span class="box__label">{{ d.box_label }}</span>{% endif %}
-          </span>
-          {% endif %}
-        </div>
-        <div class="viewer__foot">
-          <span class="viewer__next" id="next-look">next look in <span id="countdown">--:--</span></span>
-          <button class="btn" id="recheck" data-case="{{ d.case.id }}" style="margin-left:auto">Check now</button>
-        </div>
-      </div>
+      {# Everything the sidebar used to say, in one line. Who it went to, what
+         reference it carries and whether it actually left the building -- the
+         three facts worth stating; the rest was caveat prose repeating them. #}
+      <p class="facts">
+        <span class="facts__chip {{ 'facts__chip--scripted' if d.is_scripted else '' }}"
+              title="{{ 'Replayed from seeds/scenarios.json, not seen by a vision model' if d.is_scripted else 'Read off the frame by a vision model' }}">
+          {{ "replayed" if d.is_scripted else d.model_name }}
+        </span>
+        <span>{{ d.agency or "no agency resolved — held rather than misfiled" }}</span>
+        {# Conditional tense, deliberately: nothing has gone anywhere. #}
+        {% if d.case.channel %}
+        <span>{{ "would go out by" if d.was_dry_run else "went out by" }}
+              {{ d.case.channel.value.replace("_", " ") }}</span>
+        {% endif %}
+        {# The reference is not shown while it is a placeholder.
+           `synthesize_reference` mints it locally by hashing the case id into the
+           agency's format, so it looks exactly like a real GDOT or NCDOT number
+           and no agency has ever issued it. It used to be shown with a caveat
+           explaining that, which is a lot of words to justify a number that adds
+           nothing. Removing the number removes the need for the words. #}
+        {% if d.case.reference and not d.reference_is_placeholder %}
+        <span>{{ d.reference }}</span>
+        {% endif %}
+      </p>
 
-      {# --- evidence filmstrip --- #}
-      {% if d.frames %}
-      <div class="filmstrip">
-        {% for f in d.frames %}
-        <div class="film {{ 'film--mark' if f.mark }} {{ 'film--clear' if f.clear }}">
-          <div class="thumb">
-            {% if f.url %}<img src="{{ f.url }}" alt="{{ f.label }}" loading="lazy" width="640" height="360">{% endif %}
+      {# --- the run ------------------------------------------------------
+             The page used to explain in prose what the agent does. This does it
+             instead: the clip, boxes drawn where the model says the hazard is,
+             the five stages moving, and a report that composes and then stops at
+             a button. The demo is the explanation. --- #}
+      {% set clip = (media | selectattr("kind", "equalto", "video") | list | first) if media else none %}
+      {% if clip %}
+      <section class="run" id="run"
+               data-case="{{ d.case.id }}"
+               {% if analysis %}data-analysis='{{ analysis | tojson }}'{% endif %}>
+
+        <div class="run__stage">
+          <div class="restage__frame" id="run-frame">
+            <span class="chip-syn">{{ clip.badge_short }}</span>
+            <video id="run-video" controls preload="metadata" playsinline
+                   src="{{ clip.url }}#t=0.5"></video>
+            {# Boxes are injected here as the run streams, positioned from the
+               fractions the model returned. #}
+            <div class="run__boxes" id="run-boxes"></div>
           </div>
-          <div class="film__label"><span>{{ f.label }}</span><span>{{ f.time }}</span></div>
+
+          <div class="run__controls">
+            <button class="btn btn--primary" id="run-start">Run the agent on this clip</button>
+            <span class="run__status" id="run-status">
+              {% if analysis %}
+                Last run {{ analysis.analyzed_at[:16] | replace("T", " ") if analysis.analyzed_at else "earlier" }}
+                {%- if analysis.model_name %} · {{ analysis.model_name }}{% endif %}
+              {% else %}
+                Not run yet.
+              {% endif %}
+            </span>
+          </div>
+          <p class="run__note" id="run-note" {{ "hidden" if not (analysis and analysis.from_cache) }}>
+            {{ analysis.cache_note if analysis else "" }}
+          </p>
         </div>
-        {% endfor %}
-      </div>
+
+        <ol class="drill__stages" id="run-stages">
+          {% for key, label in [("sample","Sample"),("look","Look"),("confirm","Confirm"),("resolve","Resolve"),("report","Report")] %}
+          <li class="stage" data-stage="{{ key }}">
+            <span class="stage__dot"></span>
+            <span class="stage__label">{{ label }}</span>
+            <span class="stage__detail"></span>
+          </li>
+          {% endfor %}
+        </ol>
+
+        <p class="section-label">Frame by frame</p>
+        <ol class="looks__list run__frames" id="run-frames">
+          <li class="run__empty" id="run-frames-empty">One call per still.</li>
+        </ol>
+
+        {# The evidence still: one frame with the box burned in, so the picture
+           survives leaving this page. Written by the last run. #}
+        <figure class="run__evidence" id="run-evidence"
+                {{ "hidden" if not (analysis and analysis.evidence_url) }}>
+          <img id="run-evidence-img" alt="The frame the box was drawn on"
+               src="{{ analysis.evidence_url if analysis and analysis.evidence_url else '' }}">
+          <figcaption>
+            The clearest look.
+            <span id="run-evidence-at">
+              {%- if analysis and analysis.evidence_at is not none %}
+              {{ "%.1f"|format(analysis.evidence_at) }}s in.
+              {%- endif %}
+            </span>
+          </figcaption>
+        </figure>
+
+        <div class="run__report" id="run-report" {{ "hidden" if not (analysis and analysis.report_body) }}>
+          <p class="section-label">The report it wrote</p>
+          <p class="run__subject" id="run-subject">{{ analysis.report_subject if analysis else "" }}</p>
+          <pre id="run-body">{{ analysis.report_body if analysis else "" }}</pre>
+          <div class="run__send">
+            <button class="btn btn--primary" id="run-send"
+                    data-agency="{{ analysis.agency if analysis else '' }}">
+              Send to {{ analysis.agency if analysis and analysis.agency else "the agency" }}
+            </button>
+          </div>
+
+          {# What Send reveals. Deliberately not a redirect: this is the last
+             screen before a real transmission, so it shows the request that
+             would go — where, by what route, and every field filled in. The
+             link is offered, never taken automatically. #}
+          <div class="handover" id="run-handover" hidden>
+            <p class="handover__stamp" id="run-sent"></p>
+            <dl class="handover__grid">
+              <dt>To</dt>
+              <dd id="run-to"></dd>
+              <dt>By</dt>
+              <dd id="run-by"></dd>
+            </dl>
+            <p class="handover__fields-label section-label" id="run-fields-label" hidden>
+              The form, filled in
+            </p>
+            <dl class="handover__grid handover__grid--fields" id="run-fields"></dl>
+            <div class="handover__actions">
+              <button class="btn btn--ghost" id="run-copy">Copy the report</button>
+              <a class="btn btn--ghost" id="run-open" hidden rel="noopener" target="_blank"></a>
+              <span class="handover__copied" id="run-copied" hidden></span>
+            </div>
+          </div>
+
+          <p class="run__caveat">
+            Every address in <code>seeds/agencies.yaml</code> is
+            <code>example.invalid</code> on purpose, so nothing here can reach an
+            agency. Point it at a real endpoint and turn <code>DRY_RUN</code> off
+            and this is the request that goes.
+          </p>
+        </div>
+
+        <p class="run__error" id="run-error" hidden></p>
+      </section>
+      {% else %}
+      <p class="run__missing">
+        {% if unsimulatable %}
+        A hazard we will not simulate — every render sets
+        <code>person_generation="dont_allow"</code>. No clip, deliberately. The
+        detection and the report below are real.
+        {% else %}
+        No clip yet, so there is nothing to run over.
+        <a href="/#library">Generate one.</a>
+        {% endif %}
+      </p>
       {% endif %}
 
-      {# --- generated media: never evidence, always badged --- #}
-      <div class="synth">
-        <p class="section-label">Simulated from this detection</p>
-
-        <div class="gen" id="gen" data-case="{{ d.case.id }}">
-          <button class="btn" id="gen-run" {{ 'disabled' if not gen_enabled }}>
-            Generate dashcam clip
-          </button>
-          {% if gen_enabled %}
-          <span class="gen__cost">Calls Veo · bills per second of video · ~1 min</span>
-          {% else %}
-          <span class="gen__cost">Set <code>MEDIA_PROVIDER=vertex</code> to enable.</span>
-          {% endif %}
-
-          <div class="gen__progress" id="gen-progress" hidden>
-            <div class="gen__bar"><span id="gen-fill"></span></div>
-            <p class="gen__status" id="gen-status"></p>
-          </div>
-        </div>
-
-        <p class="synth__note">
-          Generated footage, not camera evidence. The hazard above was found on a
-          public traffic camera; these clips re-stage it from a dashcam view as
-          training data. Nothing here is ever sent to an agency.
-        </p>
-
-        <div id="gen-output"></div>
-
-        {% for m in media %}
-        <figure class="synth__item">
-          {% if m.kind == 'video' %}
-          <video controls preload="metadata" playsinline width="640" height="360">
-            <source src="{{ m.url }}" type="{{ m.mime }}">
-          </video>
-          {% else %}
-          <audio controls preload="metadata" src="{{ m.url }}"></audio>
-          {% endif %}
-          <figcaption class="synth__badge">{{ m.badge }}</figcaption>
-        </figure>
-        {% endfor %}
-      </div>
-
-      <p class="section-label">What I saw</p>
-      <p class="prose">{{ d.explain }}</p>
-
-      <div class="raw">
-        <p class="section-label">Raw model output · {{ d.model_name }}</p>
+      <details class="raw">
+        <summary class="section-label">Raw model output · {{ d.model_name }}</summary>
         <pre>{{ d.model_json }}</pre>
-      </div>
+      </details>
 
-      <p class="section-label">What I did about it</p>
-      <div class="trail" id="trail">
-        {% for t in d.trail %}
-        <div class="trail__item trail__item--{{ t.tone }}">
-          <span class="trail__dot"></span>
-          <span class="trail__time">{{ t.time }}<span class="trail__stage">{{ t.stage }}</span></span>
-          <span class="trail__text">{{ t.text }}</span>
-        </div>
-        {% endfor %}
+      <div class="looks__foot" style="border-top:0;padding-left:0">
+        <span class="viewer__next">{{ d.sla.note }}</span>
+        <button class="btn" id="recheck" data-case="{{ d.case.id }}" style="margin-left:auto">Check now</button>
       </div>
+      <p class="viewer__said" id="recheck-said" hidden></p>
+
     </div>
 
-    {# --- sidebar --- #}
-    <aside class="side">
-      <div class="report-card">
-        <p class="section-label" style="color:var(--green-soft);margin:0 0 6px">{{ d.ref_label }}</p>
-        <div class="report-card__ref">{{ d.reference }}</div>
-        <p class="report-card__label">Whose road</p>
-        <p class="report-card__value">{{ d.agency or "Not resolved — held rather than misfiled" }}</p>
-        <p class="report-card__label">How it went out</p>
-        <p class="report-card__value">{{ d.channel }}</p>
-        {% if d.filing_count > 1 %}
-        <p class="report-card__label">Filings</p>
-        <p class="report-card__value">{{ d.filing_count }} — escalated to tier {{ d.case.escalation_tier }}</p>
-        {% endif %}
-      </div>
-
-      <div class="sla">
-        <p class="section-label" style="margin:0">Time allowed</p>
-        <p class="sla__note" style="color: {{ d.sla.color }}">{{ d.sla.note }}</p>
-        <div class="sla__bar">
-          <div class="sla__fill" style="width: {{ d.sla.pct }}%; background: {{ d.sla.color }}"></div>
-        </div>
-        <p class="sla__why">{{ d.sla.why }}</p>
-      </div>
-
-      {% if d.letter %}
-      <div class="letter">
-        <p class="section-label" style="margin:0 0 10px">The message that went out</p>
-        <pre>{{ d.letter }}</pre>
-        {% if d.was_dry_run %}
-        <p class="letter__note">
-          DRY RUN — this was composed in full but never transmitted. No agency was
-          contacted. It is byte-for-byte what would have been sent.
-        </p>
-        {% endif %}
-      </div>
-      {% endif %}
-
-      <a class="btn btn--ghost btn--block" href="/">Back to the log</a>
-    </aside>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/case.js" defer></script>
-<script src="/static/js/simulate.js" defer></script>
+<script src="/static/js/case.js?v={{ v }}" defer></script>
+<script src="/static/js/inspect.js?v={{ v }}" defer></script>
 {% endblock %}

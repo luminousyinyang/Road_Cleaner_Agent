@@ -1,13 +1,13 @@
 # Road Cleaner
 
-**An autonomous agent fleet that watches 2,000+ Southeast DOT traffic cameras, spots the
-hazards official feeds miss, figures out which agency owns the road, files the report, and
-keeps watching until it's actually fixed.**
+**An autonomous agent fleet that reads road footage — a dashcam pass, or a public DOT
+camera — spots the hazards nobody has reported, figures out which agency owns that stretch
+of road, files the report, and keeps checking until it's actually fixed.**
 
 Detection is the easy part. Plenty of things can spot debris on a road. The hard part is
 everything after seeing it — working out whose road it is, saying so through the right
 channel, and then actually checking whether anybody came. Waze crowdsources sightings and
-reports to nobody. DOT cameras see everything and nobody is watching. No system closes the
+reports to nobody. Everybody with a dashcam drives straight past. No system closes the
 loop.
 
 Road Cleaner closes the loop. Nobody talks to it. It runs continuously, and its output is
@@ -15,14 +15,14 @@ Road Cleaner closes the loop. Nobody talks to it. It runs continuously, and its 
 
 And having found a hazard, it can do one more thing with it. An autonomous driving stack
 sees a million miles of ordinary road and almost no shed truck tyres — rare events are
-precisely what it is short of, and precisely what a fleet of traffic cameras sees all day.
+precisely what it is short of, and precisely what a road full of dashcams sees all day.
 So once a hazard is confirmed, Road Cleaner can re-stage it from a dashcam view with Veo
 and hand back the footage that was missing. Real detection, synthetic footage, clearly
 labelled as such: see [Simulation](#simulation--synthetic-footage-from-real-hazards).
 
 ---
 
-## Quickstart — no credentials, no cloud account, four commands
+## Quickstart — no credentials, no cloud account, two commands
 
 ```bash
 make setup     # venv + dependencies + .env
@@ -30,6 +30,13 @@ make demo      # watch a simulated week of roads, then open the dashboard
 ```
 
 Then visit **http://127.0.0.1:8080**.
+
+> **`make demo` wipes `data/` first.** It re-runs the simulated week from scratch,
+> which means the cases you were looking at get new ids — and any generated clips
+> from the old run are orphaned, because they are keyed by case id. Use
+> `road-cleaner demo --no-reset` to keep what you have, or take a copy of
+> `data/road_cleaner.db` first. (`python deploy/bundle.py` makes exactly such a
+> copy, alongside the frames the cases reference.)
 
 That works on a clean clone with no API keys of any kind. `make demo` runs the real
 four-agent pipeline over a simulated week: it polls simulated cameras that render actual
@@ -59,7 +66,7 @@ Other useful commands:
 
 ```bash
 make doctor    # which adapter is wired to each port, and what's missing to go live
-make test      # the whole suite — 225 tests, still no credentials
+make test      # the whole suite — 300+ tests, still no credentials
 make outbox    # the reports that would have been sent
 make clean     # delete all generated data
 ```
@@ -79,7 +86,9 @@ Being precise about this, because "it works" is doing a lot of work in most READ
 | Vision analysis | **Scripted by default, Gemini verified.** `gemini-3.7-flash` on Vertex answers live; flip `VISION_PROVIDER=gemini`. |
 | Simulation (Veo / Chirp / Lyria) | **Real, and off by default.** Generated clips are in `data/media/`. Costs money per second of video. |
 | Report filing | **Dry run.** Composed in full, written to disk, never transmitted. |
-| Firestore / GCS / Pub/Sub / Cloud Run | **Written, not exercised.** Deploy scripts included. |
+| Cloud Run | **Deployed and verified.** `./deploy/deploy.sh PROJECT` builds and ships it; a drill has been run against the live URL. |
+| Google ADK | **Real.** Resolves jurisdiction when the rules cannot — which is exactly what a drill's invented location forces. |
+| Firestore / GCS / Pub/Sub | **Written; Firestore is one flag away** (`--with-firestore`). Pub/Sub has no consumer yet — see architecture. |
 
 The whole design exists to make that gap an env-var flip rather than a rewrite. Every
 external dependency sits behind a port with two implementations.
@@ -139,7 +148,9 @@ cameras ───────▶│ WATCHER  │──Pub/Sub─▶│ ANALYST  
                                        └───────────┘
 ```
 
-Full detail in [docs/architecture.md](docs/architecture.md).
+Rendered diagrams — the fleet, one drill end to end, and the evidence/generated
+boundary — are in [docs/diagram.md](docs/diagram.md). Full prose in
+[docs/architecture.md](docs/architecture.md).
 
 ---
 
@@ -153,7 +164,8 @@ src/road_cleaner/
   agents/        Watcher, Analyst, Dispatcher, Auditor + the ADK coordinator.
   jurisdiction/  Rules engine mapping road + location → responsible agency.
   pipeline/      The asyncio supervisor that drives all four agents.
-  web/           FastAPI dashboard (Jinja templates, no build step).
+  web/           FastAPI dashboard (Jinja, no build step). `/` is the scenario
+                 library; also `/cases/{id}` and `/about`. /log and /simulation redirect.
   cli.py         road-cleaner {doctor,seed,demo,run,audit,serve,cases,outbox,simulate}
 seeds/           Camera registry, agency registry, scenario timeline.
 tests/           unit/ (fast, pure) + integration/ (full pipeline, zero creds).
@@ -308,6 +320,57 @@ Things worth knowing that only showed up in the building:
 
 ---
 
+## The drill — watch it work on any hazard you can describe
+
+You should not have to wait for a real mattress to fall off a real truck to see
+whether an agent works. Type a hazard into the console on the home page and the
+fleet runs the whole thing against it:
+
+| Stage | What actually runs | Model |
+|---|---|---|
+| **Scaffold** | free text → state, road, direction, lane, hazard type, county | **Gemma 4** |
+| **Stage** | invent a camera; render two frames four minutes apart | — |
+| **Detect** | analyse **each frame separately** | **Gemini 3.7 Flash** |
+| **Confirm** | the real `domain/gating.evaluate()` | — |
+| **Resolve** | `jurisdiction.resolve()` | **Google ADK** |
+| **Report** | `narrative.report_body()` + `channel.compose()` | — |
+| **Push** | **blocked** — draft only | — |
+
+About 18 seconds locally, under a minute on Cloud Run.
+
+**What is invented:** the location, the camera, the imagery.
+**What is real:** both vision calls, the gate's arithmetic, the agency lookup,
+the report text, and the decision about whether it would have been filed at all.
+
+Two frames rather than one is deliberate. The gate exists to require two
+independent observations 90s–30min apart before a case opens, and two real model
+calls on two real moments satisfy that honestly — only the clock is invented.
+Fabricating a second detection row to clear the gate would defeat the single
+check the whole system is built around.
+
+The drill has caught the gate doing its job on camera: a staged deer produced
+`animal` on one frame and `pedestrian_on_highway` on the other, the gate refused
+to corroborate them, and the case stayed at `watch`.
+
+### It cannot file, and that is the point
+
+A drill invents a location, so there is no road to report and no agency that
+should hear about it. Five things enforce that rather than intend it:
+
+1. `Case.synthetic` is set, and the id carries a `SIM-` prefix.
+2. `Dispatcher._file_locked` **raises** on a synthetic case — a silent skip would
+   be indistinguishable from "nothing to file".
+3. The drill only ever calls `compose()`, which the filing channels guarantee is
+   side-effect free. `transmit()` is never reached.
+4. Synthetic cases are excluded from the road log, `/api/stats` and the Auditor's
+   queue **by default**, so no caller has to remember to filter them out.
+5. Drill frames go to the media store, never to the evidence store behind
+   `/frames/`.
+
+Tests assert each one.
+
+---
+
 ## Simulation — synthetic footage from real hazards
 
 The detection pipeline is a scenario miner. It watches public cameras for the road events
@@ -322,13 +385,17 @@ trains on. **Chirp 3 HD** reads the dispatch briefing aloud. **Lyria** scores th
 road-cleaner simulate --dry-run                    # print the prompts, generate nothing
 road-cleaner simulate --case GA-4462 --provider vertex
 road-cleaner simulate --provider vertex --narrate --score
-road-cleaner serve                                 # then open /simulation
+road-cleaner serve                                 # the scenario library is the home page
 ```
 
-You can also render from the dashboard: a case page has a **Generate dashcam clip** button
-that starts a background job and shows progress until the clip appears. It is disabled
-unless `MEDIA_PROVIDER=vertex`, states the cost next to it, and allows one render per case
-at a time so a double-click cannot bill twice.
+You can also render from the dashboard. Every confirmed case appears in the scenario
+library at `/`: with its clip if one exists, with a **Generate dashcam clip** button if not,
+and — for hazards involving a person — with a card explaining that it will never have one.
+That is why the library replaced the old road log rather than sitting beside it: it lists
+every case, including the ones that never produced footage.
+
+The generate button is disabled unless `MEDIA_PROVIDER=vertex`, states the cost beside it,
+and allows one render per case at a time so a double-click cannot bill twice.
 
 The progress bar is **an estimate and says so**. Veo reports no percentage — an operation
 is running or it is done — so the bar is elapsed time against a typical render, capped
@@ -426,6 +493,34 @@ comes out garbled (one clip read "Howell Mill Road Road"), so the prompt describ
 reaches for cinema doing it, which is the root of the drama problem. Setting it to `False`
 fails the request outright: *"Veo 3 prompt enhancement cannot be disabled."* The size
 anchors and the negative prompt are the only counterweights available.
+
+## When the model says no
+
+Vertex throttles, and an agent that treats a 429 as a detection failure is
+worse than useless -- it silently discards the frame and the hazard with it.
+
+A full-speed run taught this the hard way: the Analyst handles every
+`frame.captured` event as it arrives, so a busy tick fired hundreds of
+concurrent vision calls. Vertex refused nearly all of them. The measured result
+was **165 consecutive `429 RESOURCE_EXHAUSTED` and zero detections** — the
+pipeline ran to completion and produced nothing, without ever failing loudly.
+
+So `GeminiVisionAnalyzer` now:
+
+- holds a **semaphore** (`VISION_MAX_CONCURRENCY`, default 4) so the number of
+  in-flight calls is bounded no matter how many frames arrive at once;
+- **retries transient failures** with exponential backoff and jitter — 429, 503,
+  504 mean "not now" and the frame is still good;
+- **does not retry** a 400 or a 404, because repeating a malformed request just
+  spends money on the same mistake;
+- **sleeps outside the semaphore**, so a backing-off call is not holding a slot
+  another frame could use;
+- and still raises rather than returning "no hazard" when it finally gives up. A
+  frame we failed to analyse is not a frame with nothing in it.
+
+The jitter matters more than it looks: without it, every worker throttled at the
+same instant retries at the same instant, and the second wave collides exactly
+like the first.
 
 ## House rules
 

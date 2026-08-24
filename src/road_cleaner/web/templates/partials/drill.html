@@ -1,0 +1,73 @@
+{# The drill console.
+
+   Give the fleet something to find, and watch it work. Every stage below runs
+   the same code a real detection goes through; only the location and the
+   imagery are invented, and the last step is deliberately not taken. #}
+
+<section class="drill" id="drill">
+  <div class="drill__head">
+    <div>
+      <p class="library__eyebrow">Live drill</p>
+      <h2>Give it a hazard. Watch it work.</h2>
+      <p class="drill__lede">
+        You should not have to wait for a real mattress to fall off a real truck to
+        see whether this thing works. Describe one, and the fleet will stage it,
+        look at it twice, decide whether it is worth reporting, work out whose road
+        it is, and write the report — then stop, because the road is not real.
+      </p>
+    </div>
+  </div>
+
+  <form class="drill__form" id="drill-form" autocomplete="off">
+    <input class="drill__input" id="drill-prompt" name="prompt" maxlength="400"
+           placeholder="a mattress in the fast lane on I-85 at rush hour"
+           value="a mattress in the fast lane on I-85 at rush hour">
+    <button class="btn btn--syn" id="drill-run" type="submit">Run the drill</button>
+  </form>
+
+  <p class="drill__examples">
+    try:
+    {% for example in examples %}
+    <button type="button" class="drill__example">{{ example }}</button>{% if not loop.last %} · {% endif %}
+    {% endfor %}
+  </p>
+
+  <ol class="drill__stages" id="drill-stages" hidden>
+    {% for key, label in stages %}
+    <li class="stage" data-stage="{{ key }}">
+      <span class="stage__dot"></span>
+      <span class="stage__label">{{ label }}</span>
+      <span class="stage__detail"></span>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <p class="drill__error" id="drill-error" hidden></p>
+
+  <div class="drill__out" id="drill-out" hidden>
+    <div class="drill__frames" id="drill-frames"></div>
+
+    <div class="draft" id="drill-draft">
+      <div class="draft__head">
+        <span class="draft__label">The report it wrote</span>
+        <span class="draft__case" id="drill-case"></span>
+      </div>
+      <p class="draft__subject" id="drill-subject"></p>
+      <pre class="draft__body" id="drill-body"></pre>
+
+      {# The blocked send. The restraint is the feature, so it is shown rather
+         than implied by the absence of a button. #}
+      <div class="draft__send">
+        <button class="btn draft__button" id="drill-send" disabled>
+          Send to <span id="drill-agency">the agency</span>
+        </button>
+        <p class="draft__why">
+          <strong>Not sent, and cannot be.</strong>
+          This location was invented for the drill, so there is no road to report
+          and no agency that should hear about it. A real detection reaches this
+          same point with a real camera behind it — that one gets sent.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

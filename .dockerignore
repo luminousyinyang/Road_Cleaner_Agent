@@ -1,0 +1,12 @@
+# Mirrors .gcloudignore. Keeps a local `docker build` honest about what the
+# image actually needs, so it does not silently differ from the Cloud Build one.
+
+.git/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+data/
+design_artifacts/
+.env

@@ -29,6 +29,23 @@
   --yellow: #F2C230;
   --green-soft: #9CC0A9;
 
+
+  /* --- synthetic register ---------------------------------------------
+   * A third voice, colder than the road log's warm paper and the explainer's
+   * forest green. Generated media is tooling, not civic paperwork, and it
+   * should not be possible to mistake one surface for the other at a glance.
+   * Values lifted from the design comp. */
+  --syn-bg: #0E1116;
+  --syn-card: #10141A;
+  --syn-line: #2B3540;
+  --syn-line-2: #33404D;
+  --syn-text: #E6E9EE;
+  --syn-dim: #94A5B4;
+  --syn-mute: #617483;
+  --syn-accent: #A9C6DA;
+  --syn-badge-bg: #1D4E6B;
+  --syn-badge-text: #EAF3F9;
+
   /* --- case kind -> tone (matches TONE in the comp) --- */
   --tone-filed: #2F7A4F;
   --tone-escalated: #B4451F;

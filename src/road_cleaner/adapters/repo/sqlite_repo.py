@@ -50,6 +50,25 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
+# Columns added after the first release. `CREATE TABLE IF NOT EXISTS` leaves an
+# existing table alone, so a database created before a column existed would keep
+# failing on every read until it was deleted -- and `data/road_cleaner.db` holds
+# the demo week, which is not something to throw away over one column.
+_ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "cases": [("synthetic", "INTEGER NOT NULL DEFAULT 0")],
+    "detections": [("box_is_measured", "INTEGER NOT NULL DEFAULT 0")],
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add any columns this build expects that an older database lacks."""
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, spec in columns:
+            if name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {spec}")
+
+
 class SqliteCaseRepository:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -62,6 +81,7 @@ class SqliteCaseRepository:
         conn = sqlite3.connect(self.path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.executescript(SCHEMA_PATH.read_text())
+        _migrate(conn)
         conn.commit()
         self._conn = conn
 
@@ -202,8 +222,8 @@ class SqliteCaseRepository:
             """INSERT OR REPLACE INTO detections
                (id, camera_id, frame_id, analyzed_at, hazard_type, lane_position,
                 severity, confidence, description, visual_evidence, box,
-                raw_model_json, model_name, prefilter_passed)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                raw_model_json, model_name, prefilter_passed, box_is_measured)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 detection.id, detection.camera_id, detection.frame_id,
                 detection.analyzed_at.isoformat(), detection.hazard_type.value,
@@ -212,6 +232,7 @@ class SqliteCaseRepository:
                 detection.box.model_dump_json() if detection.box else None,
                 detection.raw_model_json, detection.model_name,
                 int(detection.prefilter_passed),
+                int(detection.box_is_measured),
             ),
         )
 
@@ -223,6 +244,7 @@ class SqliteCaseRepository:
             confidence=row["confidence"], description=row["description"],
             visual_evidence=json.loads(row["visual_evidence"]),
             box=BoundingBox(**json.loads(row["box"])) if row["box"] else None,
+            box_is_measured=bool(row["box_is_measured"]),
             raw_model_json=row["raw_model_json"], model_name=row["model_name"],
             prefilter_passed=bool(row["prefilter_passed"]),
         )
@@ -247,8 +269,8 @@ class SqliteCaseRepository:
                 gate_reason, agency_id, agency_name, channel, reference, ref_label,
                 sla_deadline, escalation_tier, last_checked_at, next_check_at,
                 checks_done, sentence, explain, detection_ids,
-                frame_refs, raw_model_json, box, box_label)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                frame_refs, raw_model_json, box, box_label, synthetic)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(id) DO UPDATE SET
                    kind=excluded.kind, severity=excluded.severity,
                    confidence=excluded.confidence, updated_at=excluded.updated_at,
@@ -264,7 +286,13 @@ class SqliteCaseRepository:
                    explain=excluded.explain, detection_ids=excluded.detection_ids,
                    frame_refs=excluded.frame_refs, raw_model_json=excluded.raw_model_json,
                    box=excluded.box, box_label=excluded.box_label,
-                   hazard_title=excluded.hazard_title""",
+                   -- `hazard_title` was updated here while `hazard_type` was
+                   -- not, so a re-saved case could end up titled "Debris in a
+                   -- travel lane" while still typed `animal` -- the badge and
+                   -- the headline on the same page disagreeing about what the
+                   -- case is. They describe the same thing and move together.
+                   hazard_title=excluded.hazard_title,
+                   hazard_type=excluded.hazard_type""",
             (
                 case.id, case.camera_id, case.state, case.kind.value,
                 case.hazard_type.value, case.hazard_title, case.location,
@@ -280,6 +308,7 @@ class SqliteCaseRepository:
                 json.dumps([json.loads(f.model_dump_json()) for f in case.frame_refs]),
                 case.raw_model_json,
                 case.box.model_dump_json() if case.box else None, case.box_label,
+                int(case.synthetic),
             ),
         )
 
@@ -306,6 +335,7 @@ class SqliteCaseRepository:
             raw_model_json=row["raw_model_json"],
             box=BoundingBox(**json.loads(row["box"])) if row["box"] else None,
             box_label=row["box_label"],
+            synthetic=bool(row["synthetic"]),
         )
 
     async def get_case(self, case_id: str) -> Case | None:
@@ -372,10 +402,23 @@ class SqliteCaseRepository:
         )
 
     async def list_cases(
-        self, state: str | None = None, kind: str | None = None, limit: int = 100
+        self,
+        state: str | None = None,
+        kind: str | None = None,
+        limit: int = 100,
+        include_synthetic: bool = False,
     ) -> list[Case]:
+        """Cases, newest first.
+
+        Drill cases are excluded unless asked for. Defaulting to exclusion is the
+        point: every existing caller -- the road log, the statistics, the API --
+        gets the safe answer without having to remember to filter, and only the
+        drill surface opts in.
+        """
         clauses: list[str] = []
         params: list[Any] = []
+        if not include_synthetic:
+            clauses.append("synthetic = 0")
         if state and state != "all":
             clauses.append("state = ?")
             params.append(state)
@@ -391,8 +434,12 @@ class SqliteCaseRepository:
         return [self._case(r) for r in rows]
 
     async def open_cases(self) -> list[Case]:
+        # Synthetic cases are never re-checked: the Auditor would go looking for
+        # a camera that does not exist. They are a snapshot of one pipeline run,
+        # not something with a life of its own.
         rows = await self._read(
-            """SELECT * FROM cases WHERE kind IN ('watching','filed','escalated')
+            """SELECT * FROM cases
+               WHERE kind IN ('watching','filed','escalated') AND synthetic = 0
                ORDER BY opened_at"""
         )
         return [self._case(r) for r in rows]
@@ -527,7 +574,8 @@ class SqliteCaseRepository:
             """SELECT
                    SUM(CASE WHEN gate_decision = 'file' THEN 1 ELSE 0 END) AS filed,
                    SUM(CASE WHEN gate_decision = 'suppress' THEN 1 ELSE 0 END) AS suppressed
-               FROM cases WHERE gate_decision IN ('file','suppress')"""
+               FROM cases
+               WHERE gate_decision IN ('file','suppress') AND synthetic = 0"""
         )
         n_filed = (confirmed["filed"] or 0) if confirmed else 0
         n_suppressed = (confirmed["suppressed"] or 0) if confirmed else 0
@@ -537,12 +585,16 @@ class SqliteCaseRepository:
         latency_rows = await self._read(
             """SELECT (julianday(f.filed_at) - julianday(c.opened_at)) * 86400 AS secs
                FROM filings f JOIN cases c ON c.id = f.case_id
-               WHERE f.tier = 1 ORDER BY secs"""
+               WHERE f.tier = 1 AND c.synthetic = 0 ORDER BY secs"""
         )
         latencies = [r["secs"] for r in latency_rows if r["secs"] is not None]
         median = latencies[len(latencies) // 2] if latencies else 0
 
-        counts = await self._read("SELECT kind, COUNT(*) AS n FROM cases GROUP BY kind")
+        # Every number here is a public claim about what the system has done.
+        # A drill is not something the system did to a road, so none of it counts.
+        counts = await self._read(
+            "SELECT kind, COUNT(*) AS n FROM cases WHERE synthetic = 0 GROUP BY kind"
+        )
         by_kind = {r["kind"]: r["n"] for r in counts}
         total_cases = sum(by_kind.values())
 

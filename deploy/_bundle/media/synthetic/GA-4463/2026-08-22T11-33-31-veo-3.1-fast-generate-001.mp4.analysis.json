@@ -1,0 +1,137 @@
+{
+  "case_id": "GA-4463",
+  "clip_url": "/media/synthetic/GA-4463/2026-08-22T11-33-31-veo-3.1-fast-generate-001.mp4",
+  "duration_seconds": 7.6,
+  "frames": [
+    {
+      "index": 0,
+      "at": 0.4,
+      "stamp": "0.4s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "lane_1",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "A piece of vehicle debris, appearing to be a detached bumper cover or underbody trim, is lying flat across lane 1.",
+      "box": {
+        "x": 0.485,
+        "y": 0.351,
+        "width": 0.029000000000000026,
+        "height": 0.013000000000000012
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.95",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 1,
+      "at": 2.2,
+      "stamp": "2.2s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "lane_1",
+      "severity": "high",
+      "confidence": 0.98,
+      "description": "A large piece of dark rubber or plastic debris is lying across the leftmost travel lane directly in the path of travel, with another piece visible further ahead in the same lane.",
+      "box": {
+        "x": 0.417,
+        "y": 0.473,
+        "width": 0.16799999999999998,
+        "height": 0.04400000000000004
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.98",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 2,
+      "at": 4.0,
+      "stamp": "4.0s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "lane_1",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "A large piece of shredded tire tread (road gator) is lying flat across the center of the active leftmost travel lane directly in the path of traffic.",
+      "box": {
+        "x": 0.369,
+        "y": 0.677,
+        "width": 0.28900000000000003,
+        "height": 0.08299999999999996
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.95",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 3,
+      "at": 5.8,
+      "stamp": "5.8s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 4,
+      "at": 7.6,
+      "stamp": "7.6s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    }
+  ],
+  "evidence_url": "/media/synthetic/GA-4463/evidence.jpg",
+  "evidence_at": 4.0,
+  "gate_decision": "file",
+  "gate_reason": "3 frames agree at 0.96, against a 0.70 bar for high severity. Confirmed \u2014 this one is ours to report.",
+  "gate_note": "Agreement here is across one 8-second pass, not two camera polls 90s apart. On a live camera the persistence rule would still have to be satisfied separately.",
+  "agency": "Georgia DOT \u2014 District 7",
+  "agency_rule": "camera-owner",
+  "agency_rationale": "Georgia DOT \u2014 District 7 \u2014 The 511 APIs tell us who owns each camera. When they do, believe them \u2014 it is better information than anything we could infer.",
+  "report_subject": "Road hazard: debris in lane 1 on I-285",
+  "report_body": "Reporting a road hazard observed on a public traffic camera.\n\nLocation: I-285 westbound at Camp Creek Pkwy, in lane 1.\nCamera: GDOT-CCTV-0447\nFirst observed: Sun Aug 23, 12:09 PM\nConfirmed present at: 12:09 PM\n\nA large piece of shredded tire tread (road gator) is lying flat across the center of the active leftmost travel lane directly in the path of traffic.\n\n3 timestamped camera frames are attached.\n\nFiled automatically by Road Cleaner. Reply to this thread and a person will see it.",
+  "model_name": "gemini-3.7-flash",
+  "is_scripted": false,
+  "filed": false,
+  "from_cache": false,
+  "cache_note": null,
+  "analyzed_at": "2026-08-23T12:10:16-07:00",
+  "stages": [
+    {
+      "key": "sample",
+      "label": "Sample",
+      "state": "done",
+      "detail": "5 stills across 7.6s of footage"
+    },
+    {
+      "key": "look",
+      "label": "Look",
+      "state": "done",
+      "detail": "3 of 5 frames found something \u00b7 0.95 0.98 0.95"
+    },
+    {
+      "key": "confirm",
+      "label": "Confirm",
+      "state": "done",
+      "detail": "file \u2014 3 frames agree at 0.96, against a 0.70 bar for high severity. Confirmed \u2014 this one is ours to report."
+    },
+    {
+      "key": "resolve",
+      "label": "Resolve",
+      "state": "done",
+      "detail": "Georgia DOT \u2014 District 7  (camera-owner)"
+    },
+    {
+      "key": "report",
+      "label": "Report",
+      "state": "done",
+      "detail": "Draft ready \u2014 not sent"
+    }
+  ]
+}

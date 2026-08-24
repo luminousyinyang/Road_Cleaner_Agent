@@ -1,5 +1,7 @@
 # Architecture
 
+Diagrams: [docs/diagram.md](diagram.md).
+
 ## The problem this shape solves
 
 Two hard constraints drove every structural decision:

@@ -16,7 +16,11 @@ import smtplib
 from email.message import EmailMessage
 from pathlib import Path
 
-from road_cleaner.adapters.filing.base import BaseFilingChannel, ComposedReport
+from road_cleaner.adapters.filing.base import (
+    BaseFilingChannel,
+    ComposedReport,
+    guard_live_send,
+)
 from road_cleaner.domain.models import Agency, Case, Filing
 from road_cleaner.ports.filing_channel import FilingError, FilingResult
 
@@ -84,6 +88,7 @@ class EmailChannel(BaseFilingChannel):
         return message
 
     async def transmit(self, report: ComposedReport, agency: Agency) -> FilingResult:
+        guard_live_send(report.destination, "email")
         if not self.host:
             raise FilingError("SMTP_HOST is not configured")
         if not report.destination:

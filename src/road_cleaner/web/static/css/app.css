@@ -8,6 +8,18 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* `hidden` has to actually hide things.
+ *
+ * The browser's own `[hidden] { display: none }` lives in the user-agent
+ * stylesheet, which loses to *any* author rule that sets `display` -- specificity
+ * does not come into it, origin does. `.dash__idle` set `display: flex`, so the
+ * "Camera off." overlay stayed painted across the live camera preview on a phone
+ * even though the JS had correctly set the attribute.
+ *
+ * Every other `hidden` element on the site works by luck: their classes happen
+ * not to set `display`. This makes it a rule instead of a coincidence. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--paper);
@@ -581,3 +593,650 @@ a:hover { color: var(--rust); }
 }
 .gen__status.is-error { color: var(--rust); }
 button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* ==================================================== scenario library
+ *
+ * The AV-simulation surface, in its own colder register (see tokens.css).
+ * The register shift is functional: a viewer must never have to read a caption
+ * to work out whether they are looking at camera evidence or model output.
+ */
+
+/* --- one hazard, two views --- */
+.views { padding: 44px 0 10px; border-top: 1px solid var(--rule); }
+.views__head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.views__head h2 { margin: 0; }
+.views__case { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.views__grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 34px; margin-top: 24px;
+}
+.views__col { margin: 0; }
+.views__label {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--rule); padding-bottom: 8px;
+}
+.views__label span { font-family: var(--serif); font-size: 21px; }
+.views__label em {
+  font-style: normal; font-family: var(--mono); font-size: 10px;
+  letter-spacing: 0.1em; color: var(--muted);
+}
+.views__label em.is-syn { color: var(--syn-accent); }
+.views__frame { position: relative; border-radius: 4px; overflow: hidden; }
+.views__frame img, .views__frame video { display: block; width: 100%; height: auto; }
+.views__frame--real { box-shadow: 4px 4px 0 var(--rule-2); }
+.views__frame--syn { background: var(--syn-card); border: 1px solid var(--syn-line); }
+.views__seed {
+  display: block; padding: 8px 10px; font-family: var(--mono);
+  font-size: 10px; color: var(--syn-mute); background: var(--syn-card);
+}
+.views__note {
+  margin: 12px 0 0; font-size: 14px; line-height: 1.6; color: var(--ink-2); max-width: 46ch;
+}
+
+/* The badge. Not decoration -- it is the thing that keeps a generated clip from
+   being mistaken for footage, so it sits *on* the media, never beside it. */
+.chip-syn {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  padding: 5px 9px; border-radius: 3px;
+  font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--syn-badge-text); background: var(--syn-badge-bg);
+}
+
+/* --- the dark library section --- */
+.library { background: var(--syn-bg); color: var(--syn-text); padding: 46px 0 52px; margin-top: 44px; }
+.library__eyebrow {
+  margin: 0 0 10px; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--syn-mute);
+}
+.library__head {
+  display: grid; grid-template-columns: minmax(0,1.4fr) auto;
+  gap: 30px; align-items: end;
+}
+.library__head h2 { margin: 0 0 12px; color: var(--syn-text); }
+.library__lede {
+  margin: 0; max-width: 62ch; font-size: 15px; line-height: 1.65; color: var(--syn-dim);
+}
+.library__count {
+  margin: 0; font-family: var(--mono); font-size: 10.5px;
+  color: var(--syn-mute); text-align: right;
+}
+
+.chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 26px 0 22px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 100px; font-size: 12.5px;
+  color: var(--syn-dim); background: transparent; border: 1px solid var(--syn-line);
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.chip span { font-family: var(--mono); font-size: 10.5px; color: var(--syn-mute); }
+.chip:hover { border-color: var(--syn-line-2); color: var(--syn-text); }
+.chip.is-active { background: var(--syn-text); border-color: var(--syn-text); color: var(--syn-bg); }
+.chip.is-active span { color: rgba(14, 17, 22, 0.55); }
+
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.card {
+  display: flex; flex-direction: column;
+  background: var(--syn-card); border: 1px solid var(--syn-line);
+  border-radius: 7px; padding: 0 0 4px; overflow: hidden;
+}
+.card h3 {
+  margin: 14px 16px 6px; font-family: var(--sans); font-size: 16px;
+  font-weight: 600; color: var(--syn-text);
+}
+.card__meta {
+  margin: 0 16px 12px; font-family: var(--mono);
+  font-size: 10.5px; line-height: 1.6; color: var(--syn-mute);
+}
+.card__media { position: relative; background: #0A0D12; aspect-ratio: 16 / 9; }
+.card__media video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.card__media--empty { display: grid; place-items: center; }
+.card__seedframe {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; opacity: 0.14; filter: grayscale(1);
+}
+.card__placeholder {
+  position: relative; z-index: 1; font-family: var(--mono);
+  font-size: 10.5px; letter-spacing: 0.12em; color: var(--syn-mute);
+}
+.card__foot {
+  margin-top: auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 16px 10px; border-top: 1px solid var(--syn-line);
+}
+.card__foot code { font-family: var(--mono); font-size: 10.5px; color: var(--syn-mute); }
+.card__foot a { font-size: 13px; color: var(--syn-accent); }
+.card__foot a:hover { color: var(--syn-text); }
+
+/* Refused: dashed, so it reads as a deliberate gap rather than a missing clip. */
+.card--refused { border-style: dashed; border-color: var(--syn-line-2); padding-top: 18px; }
+.card__refused {
+  margin: 0 16px 8px; font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--rust);
+}
+.card__body {
+  margin: 0 16px 16px; font-size: 13.5px; line-height: 1.6; color: var(--syn-dim);
+}
+
+/* --- generate control, in the library's register --- */
+.card .gen { display: block; margin: 0 16px 12px; }
+.btn--syn {
+  background: var(--syn-text); color: var(--syn-bg);
+  border: 1px solid var(--syn-text); border-radius: 3px;
+  font-size: 12.5px; padding: 7px 12px; cursor: pointer;
+}
+.btn--syn:hover:not([disabled]) { background: var(--syn-accent); border-color: var(--syn-accent); }
+.card .gen__cost { margin: 7px 0 0; font-family: var(--mono); font-size: 10px; color: var(--syn-mute); }
+.card .gen__bar { background: var(--syn-line); }
+.card .gen__bar span { background: var(--syn-accent); }
+.card .gen__status { color: var(--syn-dim); }
+.card .gen__status.is-error { color: var(--rust); }
+
+/* --- footer --- */
+.synfoot { background: var(--syn-bg); color: var(--syn-dim); padding: 30px 0 60px; }
+.synfoot__grid {
+  display: grid; grid-template-columns: minmax(0,2fr) 1fr 1fr;
+  gap: 30px; border-top: 1px solid var(--syn-line); padding-top: 26px;
+}
+.synfoot p { margin: 0 0 6px; font-size: 13.5px; line-height: 1.6; max-width: 56ch; }
+.synfoot__mark { font-family: var(--sans); font-weight: 600; color: var(--syn-text); }
+.synfoot__label {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--syn-mute);
+}
+.synfoot code { font-family: var(--mono); font-size: 11.5px; color: var(--syn-dim); }
+.synfoot a { color: var(--syn-accent); }
+
+@media (max-width: 1000px) {
+  .views__grid { grid-template-columns: 1fr; }
+  .library__head { grid-template-columns: 1fr; }
+  .library__count { text-align: left; }
+  .cards { grid-template-columns: repeat(2, 1fr); }
+  .synfoot__grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 720px) {
+  .cards { grid-template-columns: 1fr; }
+  .synfoot__grid { grid-template-columns: 1fr; }
+}
+.synth__link { margin: 4px 0 0; font-family: var(--mono); font-size: 11px; }
+/* The library hero runs wider than the log's, so the headline breaks where the
+   comp breaks it rather than mid-phrase. */
+.hero h1 { max-width: 15ch; }
+.card .chip-syn { font-size: 9px; padding: 4px 7px; white-space: nowrap; }
+/* Controls only on hover keeps the grid reading as a gallery of stills, which
+   is what the comp shows -- but they stay reachable by keyboard. */
+.card__media video::-webkit-media-controls { opacity: 0; transition: opacity 120ms; }
+.card:hover .card__media video::-webkit-media-controls,
+.card__media video:focus::-webkit-media-controls { opacity: 1; }
+
+/* ======================================================= the drill console
+ *
+ * Sits on the light "field notebook" surface rather than the dark synthetic
+ * one: a drill exercises the civic pipeline, and only its inputs are invented.
+ */
+.drill { padding: 40px 0 20px; border-top: 1px solid var(--rule); }
+.drill__head h2 { margin: 6px 0 12px; }
+.drill__lede {
+  margin: 0 0 22px; max-width: 68ch; font-size: 15px;
+  line-height: 1.65; color: var(--ink-2);
+}
+.drill__form { display: flex; gap: 10px; flex-wrap: wrap; }
+.drill__input {
+  flex: 1 1 420px; padding: 11px 14px;
+  font-family: var(--mono); font-size: 13px; color: var(--ink);
+  background: var(--card); border: 1px solid var(--rule-2); border-radius: 3px;
+}
+.drill__input:focus { outline: 2px solid var(--forest); outline-offset: -1px; }
+.drill__examples {
+  margin: 10px 0 0; font-family: var(--mono);
+  font-size: 10.5px; color: var(--muted);
+}
+.drill__example {
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+  background: none; border: 0; border-bottom: 1px dotted var(--rule-2);
+  cursor: pointer; padding: 0;
+}
+.drill__example:hover { color: var(--rust); border-bottom-color: var(--rust); }
+
+/* --- the six stages --- */
+.drill__stages { list-style: none; margin: 26px 0 0; padding: 0; }
+.stage {
+  display: grid; grid-template-columns: 16px 110px 1fr;
+  align-items: baseline; gap: 12px; padding: 7px 0;
+  border-bottom: 1px dashed var(--rule);
+}
+.stage__dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--rule-2); justify-self: center;
+}
+.stage__label {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted-2);
+}
+.stage__detail {
+  font-family: var(--mono); font-size: 11px;
+  line-height: 1.6; color: var(--ink-2);
+}
+.stage.is-running .stage__dot { background: var(--amber); animation: rc-pulse 1s infinite; }
+.stage.is-running .stage__label { color: var(--ink); }
+.stage.is-done .stage__dot { background: var(--green); }
+.stage.is-done .stage__label { color: var(--ink); }
+.stage.is-failed .stage__dot { background: var(--rust); }
+.stage.is-failed .stage__label,
+.stage.is-failed .stage__detail { color: var(--rust); }
+.stage.is-blocked .stage__dot { background: var(--rust); opacity: 0.4; }
+@keyframes rc-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+.drill__error {
+  margin: 16px 0 0; padding: 12px 14px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--rust);
+  background: #FBEDE7; border-left: 3px solid var(--rust); border-radius: 2px;
+}
+
+/* --- staged frames --- */
+.drill__out { margin-top: 26px; }
+.drill__frames { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
+.drill__frame { margin: 0; }
+.drill__frame img {
+  display: block; width: 300px; max-width: 100%;
+  border-radius: 3px; box-shadow: 4px 4px 0 var(--rule-2);
+}
+.drill__frame figcaption {
+  margin-top: 6px; font-family: var(--mono);
+  font-size: 10px; color: var(--muted);
+}
+
+/* --- the draft, and the send it will not do --- */
+.draft {
+  background: var(--card); border: 1px solid var(--rule-2);
+  border-radius: 4px; padding: 20px 22px;
+}
+.draft__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; border-bottom: 1px solid var(--rule); padding-bottom: 10px;
+}
+.draft__label {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted);
+}
+.draft__case { font-family: var(--mono); font-size: 11px; color: var(--muted-2); }
+.draft__subject { margin: 14px 0 10px; font-family: var(--sans); font-weight: 600; }
+.draft__body {
+  margin: 0; font-family: var(--serif); font-size: 14.5px; line-height: 1.65;
+  white-space: pre-wrap; word-wrap: break-word; color: var(--ink-2);
+  max-height: 260px; overflow-y: auto;
+}
+.draft__send {
+  margin-top: 18px; padding-top: 16px;
+  border-top: 2px solid var(--rust);
+  display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: start;
+}
+.draft__button[disabled] {
+  opacity: 1; cursor: not-allowed;
+  background: var(--rule); color: var(--muted-2);
+  border: 1px dashed var(--muted-2); white-space: nowrap;
+}
+.draft__button.is-wrong { background: var(--rust); color: #fff; }
+.draft__why {
+  margin: 0; font-family: var(--mono); font-size: 11px;
+  line-height: 1.7; color: var(--ink-2); max-width: 64ch;
+}
+.draft__why strong { color: var(--rust); }
+
+@media (max-width: 720px) {
+  .stage { grid-template-columns: 16px 1fr; }
+  .stage__detail { grid-column: 2; }
+  .draft__send { grid-template-columns: 1fr; }
+}
+
+/* --- case page, after the trim ---------------------------------------- */
+/* Raw JSON is now a <details>. It restates the prose above it, so it is there
+   for anyone who wants proof the model returned structure, not for reading. */
+.raw > summary { cursor: pointer; list-style: none; }
+.raw > summary::-webkit-details-marker { display: none; }
+.raw > summary::before { content: "▸ "; color: var(--muted-2); }
+.raw[open] > summary::before { content: "▾ "; }
+/* ...and it must wrap. `white-space: pre` clipped the description mid-word
+   behind a horizontal scrollbar nobody found. */
+.raw pre { white-space: pre-wrap; word-break: break-word; }
+
+/* The DRY RUN note was the load-bearing half of the letter block and sat at the
+   bottom where nobody scrolled. It now leads, and the letter itself folds. */
+.letter__note--top {
+  margin: 0 0 12px; padding: 8px 10px;
+  background: #FBEDE7; border-left: 3px solid var(--rust); border-radius: 2px;
+  color: var(--rust); border-top: 0; padding-top: 8px;
+}
+.letter__more > summary {
+  cursor: pointer; font-family: var(--mono); font-size: 11px;
+  color: var(--muted); list-style: none;
+}
+.letter__more > summary::-webkit-details-marker { display: none; }
+.letter__more > summary::before { content: "▸ "; }
+.letter__more[open] > summary::before { content: "▾ "; }
+.letter__more pre { margin-top: 10px; }
+
+/* Generated media now sits last on the page; give it room from the trail. */
+.synth { margin-top: 34px; }
+
+/* --- the report card, told honestly ----------------------------------- */
+/* A composed-but-unsent report should not look like a receipt. The draft
+   variant keeps the layout and drops the celebratory framing. */
+.report-card--draft { background: #14342A; border: 1px dashed var(--green-soft); }
+.report-card__stamp {
+  margin: 0 0 10px; padding: 4px 8px; display: inline-block;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: #14342A; background: var(--yellow); border-radius: 2px;
+}
+.report-card__caveat {
+  margin: 6px 0 14px; font-family: var(--mono); font-size: 10px;
+  line-height: 1.6; color: var(--green-soft); opacity: 0.85;
+}
+.viewer__said {
+  margin: 0; padding: 10px 14px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.6;
+  color: var(--ink-2); background: var(--paper);
+  border-top: 1px solid var(--rule);
+}
+/* The synth block sits between the evidence and "What I saw" now, so it needs
+   room on both sides -- its trailing link was touching the next section label. */
+.synth { margin-top: 34px; margin-bottom: 34px; padding-bottom: 4px; }
+.synth__link { margin: 12px 0 0; }
+
+/* --- case page: the camera frame beside its re-staging ------------------ */
+.twoup { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+.twoup--solo { grid-template-columns: 1fr; }
+.twoup .viewer { margin: 0; }
+.restage { margin: 0; }
+.restage__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  padding: 0 0 8px; border-bottom: 1px solid var(--rule); margin-bottom: 10px;
+}
+.restage__head span { font-family: var(--serif); font-size: 19px; }
+.restage__head em {
+  font-style: normal; font-family: var(--mono); font-size: 9.5px;
+  letter-spacing: 0.1em; color: var(--rust);
+}
+.restage__frame {
+  position: relative; background: #0A0D12;
+  border: 1px solid var(--rule-2); border-radius: 4px; overflow: hidden;
+}
+.restage__frame video { display: block; width: 100%; height: auto; }
+.restage__note {
+  margin: 10px 0 0; font-family: var(--mono); font-size: 10.5px;
+  line-height: 1.6; color: var(--muted); max-width: 46ch;
+}
+@media (max-width: 1000px) { .twoup { grid-template-columns: 1fr; } }
+
+/* --- case page: the clip, and the looks as a record -------------------- */
+.stage-view { display: grid; grid-template-columns: 1fr; gap: 22px; }
+.stage-view__clip { margin: 0; }
+.stage-view__clip .restage__frame { max-width: 720px; }
+
+.looks {
+  background: var(--card); border: 1px solid var(--rule-2);
+  border-radius: var(--r-md); overflow: hidden; max-width: 720px;
+}
+.looks__head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; background: var(--ink); color: #fff;
+  font-family: var(--mono); font-size: 11px;
+}
+.looks__head .spacer { margin-left: auto; color: var(--muted-2); }
+.looks__list { list-style: none; margin: 0; padding: 0; }
+.look {
+  display: grid; grid-template-columns: 88px 1fr auto;
+  gap: 12px; align-items: baseline;
+  padding: 9px 14px; border-bottom: 1px dashed var(--rule);
+  font-family: var(--mono); font-size: 11.5px;
+}
+.look__time { color: var(--muted); }
+.look__label { color: var(--ink-2); }
+.look__link { color: var(--muted-2); font-size: 10.5px; }
+.look__link:hover { color: var(--rust); }
+.look--clear .look__label { color: var(--green); font-weight: 600; }
+/* A frame can be both the evidence the report was filed against and the one
+   that showed it cleared. The evidence role is the more informative of the two,
+   so it is declared last and wins. */
+.look--mark .look__label { color: var(--rust); font-weight: 600; }
+.look--verdict { background: var(--paper); }
+.looks__foot {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-top: 1px solid var(--rule);
+}
+
+.stage-view { margin-bottom: 34px; }
+
+/* --- what actually produced this case --------------------------------- */
+.provenance {
+  margin: 14px 0 18px; padding: 10px 14px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.65;
+  border-radius: 3px; max-width: 72ch;
+}
+.provenance code { font-size: 10.5px; }
+.provenance--scripted {
+  color: var(--ink-2); background: #FDF6E3;
+  border-left: 3px solid var(--amber);
+}
+.provenance--scripted strong { color: var(--olive); }
+.provenance--live {
+  color: var(--ink-2); background: #EEF5F0;
+  border-left: 3px solid var(--green);
+}
+.provenance--live strong { color: var(--green); }
+.look__model { color: var(--muted-2); }
+
+/* --- case page: the agent, run on the clip ----------------------------
+   Reuses .restage__frame for the video, .box for the overlay and .stage for
+   the strip. What is new here is the frame-by-frame list and the report that
+   composes and then stops. */
+.run { margin: 0 0 34px; }
+.run__stage { max-width: 720px; }
+.run__boxes { position: absolute; inset: 0; pointer-events: none; }
+/* A box the model measured is drawn solid. One inferred from the lane name is
+   dashed, because it is an approximation and should not read as a measurement. */
+.box--soft { border-style: dashed; opacity: 0.75; }
+
+.run__controls {
+  display: flex; align-items: center; gap: 14px;
+  margin: 12px 0 0; flex-wrap: wrap;
+}
+.run__status, .run__note {
+  font-family: var(--mono); font-size: 11px; line-height: 1.6; color: var(--muted);
+}
+.run__note {
+  margin: 8px 0 0; padding: 8px 12px; max-width: 68ch;
+  background: #FDF6E7; border-left: 3px solid var(--amber); border-radius: 2px;
+  color: var(--ink-2);
+}
+
+.run__frames { max-width: 720px; border: 1px solid var(--rule-2); border-radius: var(--r-md); overflow: hidden; }
+.run__empty {
+  padding: 12px 14px; font-family: var(--mono);
+  font-size: 11.5px; color: var(--muted);
+}
+.run__frame { cursor: pointer; transition: background 0.12s; }
+.run__frame:hover { background: var(--paper); }
+.run__frame--at { background: var(--paper); box-shadow: inset 2px 0 0 var(--rust); }
+.run__frame--found .look__label { color: var(--rust); }
+.run__frame--clear .look__label { color: var(--muted-2); }
+.run__conf { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+.run__evidence { margin: 22px 0 0; max-width: 720px; }
+.run__evidence img {
+  display: block; width: 100%; height: auto;
+  border: 1px solid var(--rule-2); border-radius: 4px;
+}
+.run__evidence figcaption {
+  margin: 8px 0 0; font-family: var(--mono);
+  font-size: 10.5px; line-height: 1.6; color: var(--muted);
+}
+
+.run__report { margin: 26px 0 0; max-width: 720px; }
+.run__subject {
+  margin: 0 0 10px; font-family: var(--mono); font-size: 12px;
+  color: var(--ink); font-weight: 600;
+}
+.run__report pre {
+  margin: 0; padding: 14px 16px; max-height: 320px; overflow: auto;
+  background: var(--card); border: 1px solid var(--rule-2); border-radius: var(--r-md);
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.7;
+  color: var(--ink-2); white-space: pre-wrap;
+}
+.run__send { display: flex; align-items: center; gap: 14px; margin: 14px 0 0; flex-wrap: wrap; }
+.run__error {
+  margin: 16px 0 0; padding: 12px 14px; max-width: 68ch;
+  font-family: var(--mono); font-size: 11.5px; color: var(--rust);
+  background: #FBEDE7; border-left: 3px solid var(--rust); border-radius: 2px;
+}
+.run__missing {
+  margin: 18px 0 30px; padding: 14px 16px; max-width: 68ch;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.7;
+  color: var(--muted); background: var(--card);
+  border: 1px dashed var(--rule-2); border-radius: var(--r-md);
+}
+
+/* --- case page: one column, and the facts on one line ------------------
+   The sidebar this replaces carried a second copy of the report, a reference
+   caveat and an SLA panel restating the run beneath it. */
+.detail--single { grid-template-columns: 1fr; }
+.detail--single .side { display: none; }
+
+.facts {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 12px 0 22px;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+.facts > span + span::before { content: "·"; margin-right: 10px; color: var(--rule-2); }
+.facts__chip {
+  padding: 2px 7px; border-radius: 3px;
+  background: var(--green-soft, #0F5340); color: #fff;
+  font-size: 10px; letter-spacing: 0.04em;
+}
+.facts__chip--scripted { background: var(--muted-2); }
+.facts__chip + span::before { content: none; }
+
+.run__caveat {
+  margin: 12px 0 0; max-width: 68ch;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.65;
+  color: var(--muted);
+}
+
+/* --- dashcam: the first phone-first surface here -----------------------
+   Everything else in this file assumes a desktop and collapses gracefully.
+   This is the other way round: a viewfinder that should fill a phone screen and
+   merely sit politely on a laptop. */
+.dash { padding: 8px 0 40px; }
+.dash__intro { max-width: 60ch; }
+.dash__title {
+  font-family: var(--serif); font-weight: 400;
+  font-size: 34px; line-height: 1.1; margin: 0 0 10px;
+}
+.dash__lede {
+  margin: 0 0 6px; font-size: 15px; line-height: 1.6; color: var(--ink-2);
+}
+.dash__warn {
+  margin: 14px 0 0; padding: 10px 12px; max-width: 68ch;
+  font-family: var(--mono); font-size: 11px; line-height: 1.6;
+  background: #FDF6E7; border-left: 3px solid var(--amber); border-radius: 2px;
+  color: var(--ink-2);
+}
+
+.dash__stage { margin: 22px 0 0; max-width: 760px; }
+/* No forced aspect ratio, and no `object-fit`.
+   Both used to be here, and together they broke the one thing this page is for.
+   A phone held landscape with rotation lock on keeps a portrait layout, so the
+   3/4 box matched while the camera delivered a 16:9 stream -- `cover` then threw
+   away more than half the width, which is what read as "the picture is sideways".
+   Worse, it silently broke every box: the model returns coordinates as fractions
+   of the whole frame, the overlay positions them as percentages of the element,
+   and `cover` made those two rectangles different. Letting the video keep its own
+   shape makes them the same rectangle again, so the boxes are right by
+   construction rather than by luck. */
+.dash__frame { background: #0A0D12; min-height: 180px; }
+.dash__frame video { display: block; width: 100%; height: auto; }
+.dash__idle {
+  position: absolute; inset: 0; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  font-family: var(--mono); font-size: 12px; color: var(--muted-2);
+}
+
+.dash__bar {
+  display: flex; align-items: center; gap: 14px;
+  margin: 14px 0 0; flex-wrap: wrap;
+}
+.dash__go { min-height: 46px; padding-inline: 22px; }  /* a thumb, not a cursor */
+.dash__status, .dash__count {
+  font-family: var(--mono); font-size: 11.5px; color: var(--muted);
+}
+.dash__count { margin-left: auto; }
+.dash__said {
+  margin: 14px 0 0; max-width: 68ch;
+  font-family: var(--mono); font-size: 12px; line-height: 1.65; color: var(--ink-2);
+}
+.dash__where {
+  margin: 6px 0 0;
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+.dash__note {
+  margin: 18px 0 0; max-width: 70ch;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.7; color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  /* Full-bleed viewfinder: the page padding fights a camera preview. */
+  .dash__stage { margin-inline: -18px; max-width: none; }
+  .dash__frame { border-radius: 0; border-left: 0; border-right: 0; }
+  .dash__bar, .dash__said { padding-inline: 18px; }
+  .dash__title { font-size: 27px; }
+  .dash__go { flex: 1 1 auto; }
+  /* Home indicator and rounded corners on modern phones. */
+  .dash { padding-bottom: calc(40px + env(safe-area-inset-bottom)); }
+}
+
+/* --- the handover panel ------------------------------------------------
+   What Send reveals. This is the last screen before a real transmission, so it
+   shows the request rather than navigating to it: the first version opened the
+   agency's intake page, and since every seeded address is `example.invalid` by
+   design that meant leaving the demo for a DNS error. */
+.handover {
+  margin: 16px 0 0; padding: 14px 16px; max-width: 720px;
+  background: var(--card); border: 1px solid var(--rule-2);
+  border-left: 3px solid var(--green-soft, #0F5340); border-radius: var(--r-md);
+}
+.handover__stamp {
+  margin: 0 0 12px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+  color: var(--ink); font-weight: 600;
+}
+.handover__grid {
+  display: grid; grid-template-columns: 130px 1fr;
+  gap: 4px 14px; margin: 0;
+  font-family: var(--mono); font-size: 11px; line-height: 1.6;
+}
+.handover__grid dt { color: var(--muted); }
+.handover__grid dd { margin: 0; color: var(--ink-2); word-break: break-word; }
+.handover__grid--fields { margin-top: 4px; }
+.handover__fields-label { margin: 16px 0 0; }
+.handover__actions {
+  display: flex; align-items: center; gap: 10px;
+  margin: 16px 0 0; flex-wrap: wrap;
+}
+.handover__copied {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .handover__grid { grid-template-columns: 1fr; gap: 2px; }
+  .handover__grid dt { margin-top: 8px; }
+}
+
+/* A case in trouble says so where the facts are, not inside a disclosure
+   widget. This is the filing that failed, or the decision to stop escalating
+   and hand it to a person -- the two things that used to be visible only if you
+   opened the step-by-step trail. */
+.facts--attention {
+  display: block; max-width: 72ch;
+  margin: -12px 0 22px; padding: 8px 12px;
+  background: #FBEDE7; border-left: 3px solid var(--rust); border-radius: 2px;
+  color: var(--ink-2); line-height: 1.6;
+}

@@ -12,7 +12,7 @@ it looks like and where it was.
 ## The hazard that was reported
 
 - Type: {hazard_type}
-- Position: {lane_position}
+- Position: {position}
 - Described as: {description}
 
 ## How to judge

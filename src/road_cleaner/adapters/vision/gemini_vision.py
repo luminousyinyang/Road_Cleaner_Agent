@@ -18,14 +18,16 @@ The client library is imported lazily so a local install without
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from pathlib import Path
 
+from road_cleaner.adapters.retry import with_retry
 from road_cleaner.domain.enums import HazardType, Severity
 from road_cleaner.domain.models import BoundingBox, Camera, Detection, Frame
 from road_cleaner.logging import get_logger
-from road_cleaner.ports.vision import ClearanceCheck
+from road_cleaner.ports.vision import ClearanceCheck, VisionUnavailableError
 
 log = get_logger(__name__)
 
@@ -34,21 +36,13 @@ PROMPTS = Path(__file__).resolve().parents[2] / "agents" / "prompts"
 # One yes/no question. Phrased to bias toward "yes" because a false positive
 # here costs a fraction of a cent and a false negative costs the hazard.
 PREFILTER_PROMPT = (
-    "This is a still from a traffic camera. Is there anything in it that is not "
+    "This is a still of a road. Is there anything in it that is not "
     "ordinary moving traffic on a clear road -- any object, stopped vehicle, "
     "standing water, cones, animal or person on the carriageway?\n\n"
     "If you are at all unsure, answer YES. Answering NO discards this frame "
     "permanently, so only say NO when the road is plainly clear.\n\n"
     "Answer with exactly one word: YES or NO."
 )
-
-
-class VisionUnavailableError(RuntimeError):
-    """The model could not be reached or gave an unusable answer.
-
-    Raised rather than swallowed. A frame we failed to analyse is not a frame
-    with no hazard in it.
-    """
 
 
 class GeminiVisionAnalyzer:
@@ -61,9 +55,18 @@ class GeminiVisionAnalyzer:
         use_vertex: bool = True,
         api_key: str | None = None,
         prefilter_model: str | None = None,
+        max_concurrency: int = 4,
+        max_retries: int = 5,
     ) -> None:
         self.model = model
         self.prefilter_model = prefilter_model
+        self.max_retries = max_retries
+        # Vertex answers 429 RESOURCE_EXHAUSTED long before this pipeline runs
+        # out of frames to send. The Analyst handles every `frame.captured` event
+        # as it arrives, so without a ceiling a busy tick fires hundreds of
+        # concurrent vision calls and Vertex refuses nearly all of them -- a
+        # measured run produced 165 consecutive 429s and zero detections.
+        self._slots = asyncio.Semaphore(max_concurrency)
         self._client = None
         self._config = {
             "project": project,
@@ -114,14 +117,23 @@ class GeminiVisionAnalyzer:
         return types.Part.from_bytes(data=image, mime_type="image/jpeg")
 
     async def _generate(self, model: str, contents: list) -> str:
+        """One model call, rate-limited and retried. See `adapters.retry`."""
         client = self._get_client()
-        try:
+
+        async def call() -> str:
             response = await client.aio.models.generate_content(
                 model=model, contents=contents
             )
-        except Exception as exc:  # noqa: BLE001 - surface every failure as unavailable
-            raise VisionUnavailableError(f"Gemini call failed: {exc}") from exc
-        return (response.text or "").strip()
+            return (response.text or "").strip()
+
+        return await with_retry(
+            call,
+            attempts=self.max_retries + 1,
+            slots=self._slots,
+            on_giveup=lambda exc, n: VisionUnavailableError(
+                f"Gemini call failed after {n} attempts: {exc}"
+            ),
+        )
 
     # ---------------------------------------------------------- prefilter
     async def prefilter(self, image: bytes, frame: Frame, camera: Camera) -> bool:
@@ -167,17 +179,23 @@ class GeminiVisionAnalyzer:
             raise VisionUnavailableError(f"Model returned an unknown hazard: {exc}") from exc
 
         confidence = float(payload.get("confidence", 0.0))
+        # A box the model drew is evidence. There is no longer a second kind:
+        # the fallback used to invent one from the lane name, and the lane name
+        # is gone. No box is a truthful answer; a box in the middle of the frame
+        # because we had nothing better is not.
+        measured = _box_from(payload)
         return Detection(
             camera_id=camera.id,
             frame_id=frame.id,
             analyzed_at=frame.captured_at,
             hazard_type=hazard,
-            lane_position=str(payload.get("lane_position", "unknown")),
+            lane_position=_position(payload),
             severity=severity,
             confidence=max(0.0, min(1.0, confidence)),
             description=str(payload.get("description", "")).strip(),
             visual_evidence=[str(x) for x in payload.get("visual_evidence", [])],
-            box=_box_for(str(payload.get("lane_position", "unknown"))),
+            box=measured,
+            box_is_measured=measured is not None,
             raw_model_json=json.dumps(payload, indent=2),
             model_name=self.model,
         )
@@ -186,9 +204,10 @@ class GeminiVisionAnalyzer:
     async def verify_cleared(
         self, image: bytes, evidence_image: bytes, detection: Detection, camera: Camera
     ) -> ClearanceCheck:
-        prompt = self.clearance_prompt.format(
+        prompt = _fill(
+            self.clearance_prompt,
             hazard_type=detection.hazard_type.value,
-            lane_position=detection.lane_position,
+            position=detection.lane_position,
             description=detection.description,
         )
         raw = await self._generate(
@@ -215,6 +234,27 @@ class GeminiVisionAnalyzer:
         )
 
 
+def _fill(template: str, **values: str) -> str:
+    """Substitute {placeholders} without treating the rest of the text as format syntax.
+
+    `str.format` cannot be used here. The clearance prompt ends with a JSON
+    example, and `{"still_present": ...}` is a perfectly good format field name
+    as far as `format` is concerned -- it raised
+
+        KeyError: '\n  "still_present"'
+
+    on every single clearance check. Which meant the Auditor's "is it still
+    there?" call, the thing this whole system is built around, had never once
+    run against a real model: the scripted analyzer never touches this method,
+    so the local test suite was green throughout.
+
+    Explicit replacement leaves every other brace in the file alone.
+    """
+    for key, value in values.items():
+        template = template.replace("{" + key + "}", str(value))
+    return template
+
+
 def _parse_json(text: str) -> dict | None:
     """Pull a JSON object out of a model response.
 
@@ -237,19 +277,63 @@ def _parse_json(text: str) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _box_for(lane: str) -> BoundingBox:
-    """Approximate where in the frame a lane sits.
+def _box_from(payload: dict) -> BoundingBox | None:
+    """The box the model actually drew, if it drew one.
 
-    Gemini is not asked for pixel coordinates -- models are unreliable at that,
-    and a box drawn in the wrong place is worse than a box drawn roughly. This
-    maps the lane it did report onto a sensible region, which is all the overlay
-    needs to be useful.
+    `box_2d` arrives as [ymin, xmin, ymax, xmax] normalised 0-1000, which is the
+    convention Gemini uses for spatial grounding. `BoundingBox` stores fractions
+    of the frame, so this is a divide and a reorder.
+
+    Returns None rather than guessing when the model omitted the box or returned
+    something unusable -- the caller falls back, and a fallback that announces
+    itself is better than a plausible-looking wrong answer.
     """
-    centers = {
-        "left_shoulder": 0.30, "lane_1": 0.39, "lane_2": 0.50, "lane_3": 0.61,
-        "right_shoulder": 0.70, "median": 0.24, "median_barrier": 0.24,
-        "intersection": 0.50, "all_lanes": 0.50,
-    }
-    center = centers.get(lane, 0.5)
-    width = 0.4 if lane == "all_lanes" else 0.14
-    return BoundingBox(x=max(0.0, center - width / 2), y=0.60, width=width, height=0.18)
+    raw = payload.get("box_2d")
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return None
+    try:
+        ymin, xmin, ymax, xmax = (float(v) / 1000.0 for v in raw)
+    except (TypeError, ValueError):
+        return None
+
+    # Models occasionally emit the corners the other way round.
+    if xmax < xmin:
+        xmin, xmax = xmax, xmin
+    if ymax < ymin:
+        ymin, ymax = ymax, ymin
+
+    x = max(0.0, min(1.0, xmin))
+    y = max(0.0, min(1.0, ymin))
+    width = max(0.0, min(1.0 - x, xmax - xmin))
+    height = max(0.0, min(1.0 - y, ymax - ymin))
+    if width <= 0.0 or height <= 0.0:
+        return None
+    return BoundingBox(x=x, y=y, width=width, height=height)
+
+
+# What the model may say about where the hazard sits. Deliberately short, and
+# deliberately free of lane numbers: from a camera pointed down a road you cannot
+# count the lanes to your left, so a lane number is a guess wearing the clothes of
+# an observation. It was wrong often enough to reach case titles and the Location
+# line of reports addressed to a DOT.
+#
+# What survives is what a single frame can actually establish, and `intersection`
+# earns its place by routing a damaged signal head to the city rather than the
+# state -- see the `municipal-signal` rule in seeds/agencies.yaml.
+POSITIONS = frozenset(
+    {"intersection", "left_shoulder", "right_shoulder", "median", "median_barrier"}
+)
+
+
+def _position(payload: dict) -> str:
+    """Where the model says it is, or `unknown` if that is not something we take.
+
+    An old prompt, a cached response or a model reaching for its training data can
+    all still say `lane_2`. Anything outside `POSITIONS` becomes `unknown` rather
+    than being stored -- the whole point is that these values feed jurisdiction
+    routing, and a value we do not trust must not be able to pick an agency.
+    """
+    raw = payload.get("position", payload.get("lane_position", ""))
+    value = str(raw).strip().lower()
+    return value if value in POSITIONS else "unknown"
+

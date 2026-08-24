@@ -7,6 +7,16 @@ from typing import Protocol, runtime_checkable
 from road_cleaner.domain.models import Camera, Detection, Frame
 
 
+class VisionUnavailableError(RuntimeError):
+    """The model could not be reached or gave an unusable answer.
+
+    Part of the port's contract rather than any one adapter's business: every
+    caller has to be able to tell "I could not look" apart from "I looked and
+    the road was clear", and every implementation owes them that distinction.
+    Raised, never swallowed.
+    """
+
+
 class ClearanceCheck:
     """Whether a previously-reported hazard is still in the frame.
 

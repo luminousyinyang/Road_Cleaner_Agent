@@ -1,0 +1,137 @@
+{
+  "case_id": "FL-2196",
+  "clip_url": "/media/synthetic/FL-2196/2026-08-23T12-42-16-veo-3.1-fast-generate-001.mp4",
+  "duration_seconds": 7.6,
+  "frames": [
+    {
+      "index": 0,
+      "at": 0.4,
+      "stamp": "0.4s",
+      "state": "found",
+      "found": true,
+      "hazard": "unreported_closure",
+      "hazard_label": "unreported closure",
+      "lane": "unknown",
+      "severity": "critical",
+      "confidence": 0.88,
+      "description": "A line of orange traffic cones forms a taper closing a travel lane ahead without visible advance warning signage.",
+      "box": {
+        "x": 0.515,
+        "y": 0.395,
+        "width": 0.03400000000000003,
+        "height": 0.04199999999999998
+      },
+      "box_measured": true,
+      "box_label": "unreported closure \u00b7 0.88",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 1,
+      "at": 2.2,
+      "stamp": "2.2s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 2,
+      "at": 4.0,
+      "stamp": "4.0s",
+      "state": "found",
+      "found": true,
+      "hazard": "unreported_closure",
+      "hazard_label": "unreported closure",
+      "lane": "unknown",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "A line of orange traffic cones runs along the left shoulder line and into travel lanes without advance warning signs or work crews visible.",
+      "box": {
+        "x": 0.362,
+        "y": 0.422,
+        "width": 0.04200000000000004,
+        "height": 0.12000000000000005
+      },
+      "box_measured": true,
+      "box_label": "unreported closure \u00b7 0.95",
+      "model": "gemini-3.7-flash"
+    },
+    {
+      "index": 3,
+      "at": 5.8,
+      "stamp": "5.8s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 4,
+      "at": 7.6,
+      "stamp": "7.6s",
+      "state": "found",
+      "found": true,
+      "hazard": "debris",
+      "hazard_label": "debris",
+      "lane": "left_shoulder",
+      "severity": "medium",
+      "confidence": 0.95,
+      "description": "An isolated orange and white traffic cone stands on the narrow left shoulder against the concrete barrier.",
+      "box": {
+        "x": 0.114,
+        "y": 0.513,
+        "width": 0.05799999999999998,
+        "height": 0.237
+      },
+      "box_measured": true,
+      "box_label": "debris \u00b7 0.95",
+      "model": "gemini-3.7-flash"
+    }
+  ],
+  "evidence_url": "/media/synthetic/FL-2196/evidence.jpg",
+  "evidence_at": 7.6,
+  "gate_decision": "file",
+  "gate_reason": "2 frames agree at 0.92, against a 0.70 bar for high severity. Confirmed \u2014 this one is ours to report.",
+  "gate_note": "Agreement here is across one 8-second pass, not two camera polls 90s apart. On a live camera the persistence rule would still have to be satisfied separately.",
+  "agency": "FDOT District 4",
+  "agency_rule": "camera-owner",
+  "agency_rationale": "FDOT District 4 \u2014 The 511 APIs tell us who owns each camera. When they do, believe them \u2014 it is better information than anything we could infer.",
+  "report_subject": "Road hazard: debris in a travel lane on I-95",
+  "report_body": "Reporting a road hazard observed on a public traffic camera.\n\nLocation: I-95 southbound at Atlantic Boulevard.\nCamera: FDOT-CCTV-1187\nFirst observed: Sun Aug 23, 3:21 PM\nConfirmed present at: 3:22 PM\n\nAn isolated orange and white traffic cone stands on the narrow left shoulder against the concrete barrier.\n\n3 timestamped camera frames are attached.\n\nFiled automatically by Road Cleaner. Reply to this thread and a person will see it.",
+  "model_name": "gemini-3.7-flash",
+  "is_scripted": false,
+  "filed": false,
+  "from_cache": false,
+  "cache_note": null,
+  "analyzed_at": "2026-08-23T15:22:17-07:00",
+  "stages": [
+    {
+      "key": "sample",
+      "label": "Sample",
+      "state": "done",
+      "detail": "5 stills across 7.6s of footage"
+    },
+    {
+      "key": "look",
+      "label": "Look",
+      "state": "done",
+      "detail": "3 of 5 frames found something \u00b7 0.88 0.95 0.95"
+    },
+    {
+      "key": "confirm",
+      "label": "Confirm",
+      "state": "done",
+      "detail": "file \u2014 2 frames agree at 0.92, against a 0.70 bar for high severity. Confirmed \u2014 this one is ours to report."
+    },
+    {
+      "key": "resolve",
+      "label": "Resolve",
+      "state": "done",
+      "detail": "FDOT District 4  (camera-owner)"
+    },
+    {
+      "key": "report",
+      "label": "Report",
+      "state": "done",
+      "detail": "Draft ready \u2014 not sent"
+    }
+  ]
+}

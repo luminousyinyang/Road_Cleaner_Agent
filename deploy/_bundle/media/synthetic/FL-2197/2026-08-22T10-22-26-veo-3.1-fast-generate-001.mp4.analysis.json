@@ -1,0 +1,95 @@
+{
+  "case_id": "FL-2197",
+  "clip_url": "/media/synthetic/FL-2197/2026-08-22T10-22-26-veo-3.1-fast-generate-001.mp4",
+  "duration_seconds": 7.6,
+  "frames": [
+    {
+      "index": 0,
+      "at": 0.4,
+      "stamp": "0.4s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 1,
+      "at": 2.2,
+      "stamp": "2.2s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 2,
+      "at": 4.0,
+      "stamp": "4.0s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 3,
+      "at": 5.8,
+      "stamp": "5.8s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    },
+    {
+      "index": 4,
+      "at": 7.6,
+      "stamp": "7.6s",
+      "state": "clear",
+      "found": false,
+      "description": "Nothing here."
+    }
+  ],
+  "evidence_url": null,
+  "evidence_at": null,
+  "gate_decision": null,
+  "gate_reason": null,
+  "gate_note": null,
+  "agency": null,
+  "agency_rule": null,
+  "agency_rationale": null,
+  "report_subject": null,
+  "report_body": null,
+  "model_name": null,
+  "is_scripted": true,
+  "filed": false,
+  "from_cache": false,
+  "cache_note": null,
+  "analyzed_at": null,
+  "stages": [
+    {
+      "key": "sample",
+      "label": "Sample",
+      "state": "done",
+      "detail": "5 stills across 7.6s of footage"
+    },
+    {
+      "key": "look",
+      "label": "Look",
+      "state": "done",
+      "detail": "Nothing in any of 5 frames."
+    },
+    {
+      "key": "confirm",
+      "label": "Confirm",
+      "state": "blocked",
+      "detail": "Nothing to report."
+    },
+    {
+      "key": "resolve",
+      "label": "Resolve",
+      "state": "blocked",
+      "detail": "Nothing to report."
+    },
+    {
+      "key": "report",
+      "label": "Report",
+      "state": "blocked",
+      "detail": "Nothing to report."
+    }
+  ]
+}

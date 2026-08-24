@@ -298,6 +298,8 @@ def _build_vision(settings: Settings, scenarios: ScenarioBook | None):
             use_vertex=settings.google_genai_use_vertexai,
             api_key=settings.google_api_key,
             prefilter_model=settings.gemma_model if settings.gemma_prefilter_enabled else None,
+            max_concurrency=settings.vision_max_concurrency,
+            max_retries=settings.vision_max_retries,
         )
     assert scenarios is not None
     return ScriptedVisionAnalyzer(scenarios)
@@ -312,6 +314,8 @@ def _build_reasoner(settings: Settings):
             project=settings.google_cloud_project,
             location=settings.google_cloud_location,
             use_vertex=settings.google_genai_use_vertexai,
+            max_concurrency=2,
+            max_retries=settings.vision_max_retries,
         )
     return ScriptedReasoner()
 
@@ -319,7 +323,11 @@ def _build_reasoner(settings: Settings):
 def _build_channel(kind: str, settings: Settings):
     """The transport that would carry a report if we were sending it."""
     if kind == FilingChannelKind.OPEN311:
-        return Open311Channel(settings.open311_endpoint, settings.open311_api_key)
+        return Open311Channel(
+            settings.open311_endpoint,
+            settings.open311_api_key,
+            from_address=settings.filing_from_address,
+        )
     if kind == FilingChannelKind.EMAIL:
         return EmailChannel(
             host=settings.smtp_host,

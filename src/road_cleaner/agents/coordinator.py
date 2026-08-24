@@ -79,10 +79,10 @@ An agent that re-sends the same message forever is spam. Stopping is a feature.
 """.strip()
 
 COORDINATOR_INSTRUCTION = """
-You are Road Cleaner: an autonomous agent fleet that watches public traffic
-cameras across Georgia, Florida and North Carolina, finds hazards the official
-incident feeds have missed, works out which agency owns the road, files the
-report, and keeps watching until the road is actually clear.
+You are Road Cleaner: an autonomous agent fleet that reads road footage --
+a dashcam pass, or a public traffic camera -- finds hazards nobody has reported,
+works out which agency owns that stretch of road, files the report, and keeps
+checking until the road is actually clear.
 
 You coordinate four specialists:
 - watcher: camera polling and scheduling

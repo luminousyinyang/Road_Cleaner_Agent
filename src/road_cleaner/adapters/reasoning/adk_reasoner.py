@@ -22,10 +22,12 @@ without a model, which is why the entire pipeline runs with no credentials.
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from pydantic import BaseModel, Field
 
+from road_cleaner.adapters.retry import with_retry
 from road_cleaner.domain.models import Agency, Camera, Detection
 from road_cleaner.logging import get_logger
 from road_cleaner.ports.reasoning import JurisdictionVerdict
@@ -73,7 +75,7 @@ A correct draft already exists. Your job is to make it read well -- not to
 change what it says.
 
 Absolute rules:
-- Never add, remove or alter a fact: no location, time, lane, confidence,
+- Never add, remove or alter a fact: no location, time, position, confidence,
   camera id or measurement may change.
 - Never add detail that is not in the draft. You have not seen the image.
 - Never make it sound more certain than the draft does.
@@ -99,11 +101,17 @@ class AdkReasoner:
         project: str | None = None,
         location: str = "us-central1",
         use_vertex: bool = True,
+        max_concurrency: int = 2,
+        max_retries: int = 6,
     ) -> None:
         self.model = model
         self.project = project
         self.location = location
         self.use_vertex = use_vertex
+        # Lower than the vision ceiling on purpose: an ADK turn is several model
+        # calls behind one await, so each slot costs more quota than it looks.
+        self._slots = asyncio.Semaphore(max_concurrency)
+        self._max_retries = max_retries
         self._runner = None
         self._session_service = None
 
@@ -157,7 +165,20 @@ class AdkReasoner:
         return self._runner
 
     async def _ask(self, agent, prompt: str) -> str:
-        """Run one agent to completion and return its final text."""
+        """Run one agent to completion and return its final text.
+
+        Retried and rate-limited exactly like the vision path. ADK had no
+        protection at all: once the vision adapter stopped monopolising the
+        quota, the jurisdiction agent started taking the 429s instead, and a
+        throttled jurisdiction call means a case is held rather than filed.
+        """
+        return await with_retry(
+            lambda: self._ask_once(agent, prompt),
+            attempts=self._max_retries,
+            slots=self._slots,
+        )
+
+    async def _ask_once(self, agent, prompt: str) -> str:
         from google.adk.runners import Runner
         from google.adk.sessions import InMemorySessionService
         from google.genai import types
@@ -191,6 +212,9 @@ class AdkReasoner:
             for a in candidates
         )
         prompt = (
+            # Position stays here and only here: this prompt *is* the routing
+            # decision, and `intersection` is what sends a damaged signal head to
+            # the city rather than the state DOT.
             f"Hazard: {detection.hazard_type.value} at {detection.lane_position}\n"
             f"Description: {detection.description}\n\n"
             f"Camera: {camera.id}\n"

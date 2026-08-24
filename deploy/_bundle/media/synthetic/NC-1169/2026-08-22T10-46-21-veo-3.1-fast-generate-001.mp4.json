@@ -1,0 +1,12 @@
+{
+  "key": "synthetic/NC-1169/2026-08-22T10-46-21-veo-3.1-fast-generate-001.mp4",
+  "mime_type": "video/mp4",
+  "model_name": "veo-3.1-fast-generate-001",
+  "prompt": "Authentic consumer dashcam footage, recorded through a windscreen from the driver's eye height. Fixed wide-angle lens, everything in focus, no camera moves and no zoom. Flat unedited colour, mild video compression, slight engine vibration. Overcast even daylight, no lens flare, no shallow depth of field, no colour grading. The car holds a steady lane at normal traffic speed. The car is driving on a wide three-lane interstate highway with a concrete median barrier. Ahead at the side of the road, off the carriageway, about a hundred metres away, is a short dented segment of the low metal barrier at the very edge of the road, dented inward but still upright and flat against the roadside, against the median barrier. It is visible but unremarkable, small at first and growing only as the car gets nearer, the way a real object does. The car approaches at a steady speed and continues past it without stopping. Throughout the shot it keeps exactly the same size and shape, and stays low and close to the ground at the road edge, well below the height of the passing traffic, and never rears up or fills the frame.",
+  "seeded_from_frame_id": "NC/NCDOT-CCTV-0293/20260807T233000.jpg",
+  "seeded_from_case_id": "NC-1169",
+  "duration_seconds": 8.0,
+  "size_bytes": 11728879,
+  "created_at": "2026-08-22T17:46:21.407773Z",
+  "synthetic": true
+}

@@ -33,6 +33,14 @@ from road_cleaner.ports.filing_channel import FilingError
 log = get_logger(__name__)
 
 
+class SyntheticCaseError(RuntimeError):
+    """Someone tried to file a drill case with a real agency.
+
+    Never expected in normal operation -- the drill composes its report and stops
+    -- so this exists to make the boundary enforced rather than merely intended.
+    """
+
+
 class Dispatcher:
     def __init__(self, container) -> None:
         self.c = container
@@ -90,6 +98,20 @@ class Dispatcher:
             return await self._file_locked(case, camera, detection, tier)
 
     async def _file_locked(self, case: Case, camera, detection, tier: int) -> Case | None:
+        # --- 0. a drill is never filed ---
+        #
+        # The drill invents a location and generates its own footage. Sending
+        # that to a real maintenance desk would be a fabricated report about a
+        # road nobody looked at, which is the one failure this project cannot
+        # afford. Raising rather than returning None is deliberate: a silent skip
+        # here would look identical to "nothing to file" and could go unnoticed
+        # for a long time.
+        if case.synthetic:
+            raise SyntheticCaseError(
+                f"{case.id} is a drill case and can never be filed. Its location "
+                "was invented and its footage generated."
+            )
+
         # --- 1. whose road is it? ---
         verdict = await self.c.jurisdiction.resolve(camera, detection, self.c.reasoner)
 
@@ -113,15 +135,22 @@ class Dispatcher:
         )
 
         # --- 2. compose ---
-        first_seen = case.opened_at.strftime("%a %b %-d, %-I:%M %p UTC")
-        confirmed = self.c.clock.now().strftime("%-I:%M %p UTC")
         attachments = [f.blob_key for f in case.frame_refs if f.blob_key]
 
         body = narrative.report_body(
-            detection, camera, first_seen, confirmed, len(attachments) or 1, tier=tier
+            detection,
+            # The case's own location string, which is also what goes in the
+            # form's `route` field. They were built from different sources and
+            # could disagree inside a single submission.
+            case.location,
+            narrative.observed_at(case.opened_at),
+            # The real count, not `or 1`. The floor meant a case with no stored
+            # blobs still told the agency a frame was enclosed.
+            attachment_count=len(attachments),
+            tier=tier,
         )
         body = await self.c.reasoner.polish_report(body, detection, camera)
-        subject = narrative.report_subject(detection, camera, tier=tier)
+        subject = narrative.report_subject(detection, camera.road, tier=tier)
 
         filing = Filing(
             case_id=case.id,

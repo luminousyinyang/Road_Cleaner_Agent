@@ -10,7 +10,13 @@ from __future__ import annotations
 
 import httpx
 
-from road_cleaner.adapters.filing.base import BaseFilingChannel, ComposedReport
+from road_cleaner.adapters.filing.base import (
+    BaseFilingChannel,
+    ComposedReport,
+    contact_email,
+    contact_name,
+    guard_live_send,
+)
 from road_cleaner.domain.enums import HazardType
 from road_cleaner.domain.models import Agency, Case, Filing
 from road_cleaner.ports.filing_channel import FilingError, FilingResult
@@ -34,8 +40,10 @@ class Open311Channel(BaseFilingChannel):
         endpoint: str | None = None,
         api_key: str | None = None,
         *,
+        from_address: str | None = None,
         timeout: float = 20.0,
     ) -> None:
+        self.from_address = from_address
         self.endpoint = endpoint
         self.api_key = api_key
         self._client = httpx.AsyncClient(timeout=timeout)
@@ -55,6 +63,11 @@ class Open311Channel(BaseFilingChannel):
             "attribute[source]": "Road Cleaner automated camera monitoring",
             "attribute[confidence]": f"{case.confidence:.2f}",
             "attribute[camera_id]": case.camera_id,
+            # GeoReport v2 defines these and this channel sent none of them, so
+            # every Open311 filing was anonymous while the report body promised
+            # the city could reply to it.
+            "email": contact_email(self.from_address),
+            "first_name": contact_name(self.from_address),
         }
         if self.api_key:
             payload["api_key"] = self.api_key
@@ -67,6 +80,7 @@ class Open311Channel(BaseFilingChannel):
         )
 
     async def transmit(self, report: ComposedReport, agency: Agency) -> FilingResult:
+        guard_live_send(report.destination, "Open311")
         try:
             response = await self._client.post(report.destination, data=report.payload)
             response.raise_for_status()

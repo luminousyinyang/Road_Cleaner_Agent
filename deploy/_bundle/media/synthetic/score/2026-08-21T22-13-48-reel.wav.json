@@ -1,0 +1,12 @@
+{
+  "key": "synthetic/score/2026-08-21T22-13-48-reel.wav",
+  "mime_type": "audio/wav",
+  "model_name": "lyria-002",
+  "prompt": "(backfilled: generated before provenance sidecars were added)",
+  "seeded_from_frame_id": null,
+  "seeded_from_case_id": null,
+  "duration_seconds": null,
+  "size_bytes": 6291544,
+  "created_at": "2026-08-22T05:17:24.971540Z",
+  "synthetic": true
+}

@@ -17,7 +17,13 @@ import re
 
 import httpx
 
-from road_cleaner.adapters.filing.base import BaseFilingChannel, ComposedReport
+from road_cleaner.adapters.filing.base import (
+    BaseFilingChannel,
+    ComposedReport,
+    contact_email,
+    contact_name,
+    guard_live_send,
+)
 from road_cleaner.domain.models import Agency, Case, Filing
 from road_cleaner.ports.filing_channel import FilingError, FilingResult
 
@@ -39,9 +45,13 @@ class MaintenanceFormChannel(BaseFilingChannel):
             "route": case.location,
             "county": "",
             "description": filing.body,
-            "contactEmail": self.from_address,
-            "contactName": "Road Cleaner (automated)",
-            "reportSource": "public traffic camera monitoring",
+            # Left for a person to complete unless a real address is configured.
+            # The default was `road-cleaner@example.invalid` -- an RFC 2606 TLD
+            # that can never receive mail -- sitting in the contact field of a
+            # form whose report promises "reply and a person will see it".
+            "contactEmail": contact_email(self.from_address),
+            "contactName": contact_name(self.from_address),
+            "reportSource": "dashcam footage, reviewed by an automated agent",
         }
         return ComposedReport(
             destination=agency.endpoint or "",
@@ -52,6 +62,7 @@ class MaintenanceFormChannel(BaseFilingChannel):
         )
 
     async def transmit(self, report: ComposedReport, agency: Agency) -> FilingResult:
+        guard_live_send(report.destination, "a maintenance form")
         if not report.destination:
             raise FilingError(f"{agency.name} has no maintenance form endpoint on file")
         try:

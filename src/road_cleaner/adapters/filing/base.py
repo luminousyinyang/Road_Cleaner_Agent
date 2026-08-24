@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from road_cleaner.domain.models import Agency, Case, Filing
-from road_cleaner.ports.filing_channel import FilingResult
+from road_cleaner.ports.filing_channel import FilingError, FilingResult
 
 
 class ComposedReport:
@@ -56,6 +56,65 @@ class BaseFilingChannel(ABC):
 
     async def close(self) -> None:
         return None
+
+
+# The address the project ships with. It is an RFC 2606 reserved TLD, chosen so
+# that a misconfigured deployment cannot mail anybody -- which is right for a
+# `From:` header and wrong for a contact field somebody is meant to reply to.
+UNSET_ADDRESS = "road-cleaner@example.invalid"
+
+# What goes in a contact field when nobody has configured a real address.
+# Deliberately a blank to fill rather than a plausible-looking fake: a form
+# arriving at a DOT with an unreachable contact address is worse than one that
+# visibly needs a name typed into it.
+CONTACT_EMAIL_PLACEHOLDER = "<your email>"
+CONTACT_NAME_PLACEHOLDER = "<Your name>"
+
+
+def _configured(address: str | None) -> bool:
+    """Whether somebody has set a real, routable reply address."""
+    return bool(address) and address != UNSET_ADDRESS and not address.endswith(".invalid")
+
+
+def contact_email(address: str | None) -> str:
+    return address if _configured(address) else CONTACT_EMAIL_PLACEHOLDER
+
+
+def contact_name(address: str | None) -> str:
+    """A name for the contact field, derived from the address when there is one.
+
+    `road-cleaner@example.invalid` used to be paired with the literal string
+    "Road Cleaner (automated)". Both were hardcoded, neither could be replied to,
+    and a maintenance desk reading them had no person to reach.
+    """
+    if not _configured(address):
+        return CONTACT_NAME_PLACEHOLDER
+    local = address.split("@", 1)[0]
+    return local.replace(".", " ").replace("-", " ").replace("_", " ").title()
+
+
+def guard_live_send(destination: str, channel: str) -> None:
+    """Refuse to transmit unless somebody has said so twice.
+
+    `seeds/agencies.yaml` holds the DOTs' real public reporting forms, so the
+    dashboard can show where a report would actually go. The cost of that is that
+    `DRY_RUN=false` alone would be enough to start POSTing to a government intake
+    form, and one environment variable is too thin a wall for that.
+
+    So this is the second switch. Every `transmit` calls it first -- checked here
+    rather than at the call site, because a guard a caller can forget is not a
+    guard. Composing is unaffected: rendering what would be sent has never been
+    the dangerous half.
+    """
+    from road_cleaner.config import get_settings
+
+    if get_settings().allow_live_filing:
+        return
+    raise FilingError(
+        f"Refusing to transmit to {destination or 'an agency'} over {channel}. "
+        "Real agency endpoints are configured, so sending needs ALLOW_LIVE_FILING=true "
+        "as well as DRY_RUN=false. Composing the report is unaffected."
+    )
 
 
 def synthesize_reference(agency: Agency, case: Case) -> str:

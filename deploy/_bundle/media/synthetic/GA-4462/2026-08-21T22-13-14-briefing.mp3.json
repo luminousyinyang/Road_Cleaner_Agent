@@ -1,0 +1,12 @@
+{
+  "key": "synthetic/GA-4462/2026-08-21T22-13-14-briefing.mp3",
+  "mime_type": "audio/mpeg",
+  "model_name": "en-US-Chirp3-HD-Achernar",
+  "prompt": "(backfilled: generated before provenance sidecars were added)",
+  "seeded_from_frame_id": null,
+  "seeded_from_case_id": "GA-4462",
+  "duration_seconds": null,
+  "size_bytes": 114336,
+  "created_at": "2026-08-22T05:17:24.970370Z",
+  "synthetic": true
+}

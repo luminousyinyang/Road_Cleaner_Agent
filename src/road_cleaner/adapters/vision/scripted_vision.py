@@ -149,16 +149,22 @@ class ScriptedVisionAnalyzer:
             description=description,
             visual_evidence=list(evidence),
             box=box,
+            box_is_measured=True,
             raw_model_json=json.dumps(payload, indent=2),
             model_name=self.model_name,
         )
 
     @staticmethod
     def _box_for(lane: str) -> BoundingBox:
-        """Roughly where in the frame that lane sits.
+        """Where in the frame that lane sits.
 
-        Mirrors the renderer's geometry so the box drawn on the dashboard lands
-        on the thing it is pointing at.
+        This looks like the lane-name lookup that was deleted from the Gemini
+        analyzer, and it is the opposite of it. There, a lane the model guessed
+        was turned into a box nobody had measured. Here the lane is an *input*:
+        `scene.render` drew the hazard at this lane's x fraction (`scene.LANE_X`),
+        so mirroring that geometry points at the object we ourselves put there.
+        It is ground truth about a picture we made, which is why the detections
+        it produces are marked `box_is_measured=True`.
         """
         centers = {
             "left_shoulder": 0.30, "lane_1": 0.39, "lane_2": 0.50,

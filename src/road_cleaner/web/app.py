@@ -15,11 +15,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from road_cleaner.adapters.media.scenario_prompt import (
+    UNSIMULATABLE,
     UnsimulatableHazardError,
     scenario_prompt,
 )
@@ -27,22 +28,101 @@ from road_cleaner.agents.auditor import Auditor
 from road_cleaner.agents.dispatcher import Dispatcher
 from road_cleaner.config import MediaProviderKind, Settings, get_settings
 from road_cleaner.container import build_container
+from road_cleaner.domain.models import Camera, Frame
 from road_cleaner.logging import configure_logging, get_logger
+from road_cleaner.pipeline.drill import STAGES as DRILL_STAGES
 from road_cleaner.ports.blob_store import BlobNotFoundError
 from road_cleaner.ports.media import is_synthetic_key
+from road_cleaner.ports.vision import VisionUnavailableError
 from road_cleaner.web import serializers as S
-from road_cleaner.web.jobs import RenderJobs
+from road_cleaner.web.jobs import DrillJobs, InspectJobs, RenderJobs
+from road_cleaner.web.serializers import when
+
+# Offered as one-click starting points. Each is a different hazard class, so a
+# judge clicking through sees the gate reach different conclusions rather than
+# the same one four times.
+DRILL_EXAMPLES = [
+    "a mattress in the fast lane on I-85 at rush hour",
+    "flooding across both lanes of US-70 after a storm",
+    "a deer standing on the shoulder of GA-400 before dawn",
+    "a car stopped with hazards on the I-4 shoulder",
+]
 
 log = get_logger(__name__)
 
 WEB_DIR = Path(__file__).parent
 TEMPLATES = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
+
+class _AssetVersion:
+    """Stringifies to a cache-busting token, recomputed each time it renders.
+
+    A plain value captured at import time would go stale the moment a stylesheet
+    changed, which is the whole problem this exists to solve.
+    """
+
+    def __str__(self) -> str:
+        return asset_version()
+
+
+def asset_version() -> str:
+    """A cache-busting token derived from the static files themselves.
+
+    Without this the browser holds on to `app.css` and every style change looks
+    like it silently failed -- a page can render with new markup and last week's
+    stylesheet, which is worse than either alone because it looks like a bug in
+    the markup. Recomputed per request so editing CSS during development shows
+    up on reload; the cost is a handful of stat() calls.
+    """
+    newest = 0.0
+    for path in (WEB_DIR / "static").rglob("*"):
+        if path.is_file():
+            newest = max(newest, path.stat().st_mtime)
+    return str(int(newest))
+
+
+TEMPLATES.env.globals["v"] = _AssetVersion()
+
+# A phone frame scaled to ~960px and JPEG-encoded lands around 100-200KB. The
+# ceiling is generous enough for a full-resolution capture from a careless client
+# and small enough that a stuck upload fails fast rather than tying up the worker.
+DASHCAM_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _dashcam_camera() -> Camera:
+    """The stand-in for a phone on a windscreen.
+
+    `analyze` needs a Camera because every other caller has a real one, and the
+    only fields it reads are the ones that go into the prompt's context line. The
+    values here are chosen to make that sentence true rather than plausible: we
+    genuinely do not know what road this is or which way it faces, and saying
+    "I-285 westbound" to make the prompt read nicely would be inventing evidence.
+
+    It is never stored, so it never collides with a real camera id.
+    """
+    return Camera(
+        id="DASHCAM",
+        state="--",
+        name="a phone held up to a windscreen",
+        road="an unidentified road",
+        lat=0.0,
+        lng=0.0,
+        snapshot_url="dashcam://live",
+    )
+
+
 _MEDIA_MIME = {
     ".mp4": "video/mp4",
     ".webm": "video/webm",
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
+    # The boxed evidence still an analysis leaves behind. Generated, so it is
+    # served from here rather than from `/frames`, which is for what cameras
+    # actually saw. Without this it went out as application/octet-stream and
+    # rendered only because browsers sniff, which is not something to rely on.
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
 }
 
 
@@ -85,6 +165,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.container = container
         app.state.auditor = Auditor(container, Dispatcher(container))
         app.state.renders = RenderJobs()
+        app.state.drills = DrillJobs()
+        app.state.inspections = InspectJobs()
         try:
             yield
         finally:
@@ -96,6 +178,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
+
+    @app.middleware("http")
+    async def add_asset_version(request: Request, call_next):
+        request.state.asset_version = asset_version()
+        return await call_next(request)
     _register_routes(app)
     return app
 
@@ -103,58 +190,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table reads better here
     # ------------------------------------------------------------- pages
     @app.get("/", response_class=HTMLResponse)
-    async def road_log(request: Request, kind: str = "all", state: str = "all"):
+    async def scenarios(request: Request, hazard: str = "all"):
+        """The scenario library -- the front door.
+
+        Lists *every* confirmed case, not just the ones with a clip. A case with
+        no clip yet gets a Generate button; a hazard we refuse to simulate gets a
+        card saying so. That is what lets this page replace the old road log
+        without losing the cases that never produced footage -- the suppressed,
+        the still-watching, and the ones we decline to render.
+        """
         c = request.app.state.container
-        now = c.clock.now()
+        root = c.settings.media_local_path
 
-        every = await c.repository.list_cases(limit=1000)
-        counts_by_kind: dict[str, int] = {}
-        counts_by_state: dict[str, int] = {}
-        for case in every:
-            counts_by_kind[case.kind.value] = counts_by_kind.get(case.kind.value, 0) + 1
-            counts_by_state[case.state] = counts_by_state.get(case.state, 0) + 1
+        # Hazards we refuse to simulate are left out of the gallery entirely.
+        # The case itself stays in the system -- it is a real detection that was
+        # reported and cleared, and it still counts in the statistics -- but a
+        # library of clips is no place for a card that will never have one.
+        cards = []
+        for case in await c.repository.list_cases(limit=1000):
+            if case.hazard_type.value in UNSIMULATABLE:
+                continue
+            camera = await c.repository.get_camera(case.camera_id)
+            cards.append(S.scenario_card(case, root, camera))
 
-        visible = [
-            case
-            for case in every
-            if (kind == "all" or case.kind.value == kind)
-            and (state == "all" or case.state == state)
-        ]
-
-        def href(new_kind: str, new_state: str) -> str:
-            return f"/?kind={new_kind}&state={new_state}#log"
-
-        filters = [
-            {
-                **f,
-                "count": len(every) if f["key"] == "all" else counts_by_kind.get(f["key"], 0),
-                "href": href(f["key"], state),
-            }
-            for f in S.FILTERS
-        ]
-        states = [
-            {
-                **s,
-                "count": len(every) if s["key"] == "all" else counts_by_state.get(s["key"], 0),
-                "href": href(kind, s["key"]),
-            }
-            for s in S.STATES
-        ]
+        filters = S.scenario_filters(cards, hazard)
+        visible = cards if hazard == "all" else [x for x in cards if x["hazard_key"] == hazard]
+        # The pairing at the top needs a case that actually has a clip.
+        featured = next((x for x in cards if x["state"] == "clip"), None)
 
         return TEMPLATES.TemplateResponse(
             request,
-            "log.html",
+            "scenarios.html",
             {
-                "active": "log",
-                "cases": [S.case_row(x) for x in visible],
+                "active": "scenarios",
+                "cards": visible,
                 "filters": filters,
-                "states": states,
-                "active_filter": kind,
-                "active_state": state,
-                "summary": S.summary_line(counts_by_kind),
-                "stats": S.stat_band(await c.repository.stats(now)),
+                "summary": S.library_summary(cards),
+                "featured": featured,
+                "stats": S.stat_band(await c.repository.stats(c.clock.now())),
+                "veo_model": c.settings.veo_model,
+                "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
+                "stages": DRILL_STAGES,
+                "examples": DRILL_EXAMPLES,
             },
         )
+
+    @app.get("/log")
+    @app.get("/simulation")
+    async def retired_pages():
+        """The road log and the old simulation page both folded into `/`.
+
+        Permanent, because these URLs were in the README and the demo script.
+        """
+        return RedirectResponse("/", status_code=301)
 
     @app.get("/cases/{case_id}", response_class=HTMLResponse)
     async def case_page(request: Request, case_id: str):
@@ -171,6 +259,15 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 # Kept out of `case_detail` so the evidence view and the
                 # generated view stay separately assembled -- see media_for_case.
                 "media": S.media_for_case(c.settings.media_local_path, case_id),
+                # The last time the agent was run over this clip, so the page
+                # opens on a real result rather than an empty frame.
+                "analysis": S.last_analysis(
+                    c.settings.media_local_path, case_id, detail, c.settings
+                ),
+                # A hazard we decline to simulate will never have a clip, so the
+                # page says that rather than pointing at a library card that is
+                # deliberately not there.
+                "unsimulatable": detail.case.hazard_type.value in UNSIMULATABLE,
                 "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
             },
         )
@@ -178,6 +275,89 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
     @app.get("/about", response_class=HTMLResponse)
     async def about(request: Request):
         return TEMPLATES.TemplateResponse(request, "about.html", {"active": "about"})
+
+    # ----------------------------------------------------------- dashcam
+    @app.get("/dashcam", response_class=HTMLResponse)
+    async def dashcam(request: Request):
+        """The same agent, pointed at a real road through a phone."""
+        c = request.app.state.container
+        return TEMPLATES.TemplateResponse(
+            request,
+            "dashcam.html",
+            {
+                "active": "dashcam",
+                # The page says which model is about to look, because locally
+                # that is the scripted analyzer and it will find nothing.
+                "model": getattr(c.vision, "model_name", type(c.vision).__name__),
+                "scripted": type(c.vision).__name__ == "ScriptedVisionAnalyzer",
+            },
+        )
+
+    @app.post("/api/dashcam/look")
+    async def dashcam_look(request: Request):
+        """One frame from a phone camera, one answer. Nothing is kept.
+
+        Deliberately not a job like the other analysis routes: those exist
+        because a Veo render or a five-frame sweep takes a minute, and this is a
+        single round trip that a viewfinder is waiting on.
+
+        **Nothing here is written.** No frame, no detection, no case, no filing.
+        The `Frame` and `Camera` below are built because `analyze` takes them and
+        are then dropped. A phone on a windscreen is not a registered public
+        camera, we do not know whose road it is on, and a report backed by a
+        picture nobody kept would be unauditable -- so this looks, and stops.
+        """
+        c = request.app.state.container
+        image = await request.body()
+        if not image:
+            raise HTTPException(status_code=422, detail="No image in the request body.")
+        if len(image) > DASHCAM_MAX_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"That frame is {len(image) // 1024}KB. Scale it down before "
+                    f"sending -- the limit is {DASHCAM_MAX_BYTES // 1024}KB."
+                ),
+            )
+        if not image.startswith(b"\xff\xd8"):
+            raise HTTPException(status_code=415, detail="Send a JPEG.")
+
+        camera = _dashcam_camera()
+        frame = Frame(camera_id=camera.id, blob_key="", phash="")
+        try:
+            detection = await c.vision.analyze(image, frame, camera)
+        except VisionUnavailableError as exc:
+            # Never silently "nothing here" -- a model that could not be reached
+            # is not a clear road, and on a viewfinder the difference is the
+            # whole point.
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        if detection is None:
+            return {"found": False, "model": getattr(c.vision, "model_name", "unknown")}
+        return {
+            "found": True,
+            "hazard": detection.hazard_type.value,
+            "hazard_label": detection.hazard_type.value.replace("_", " "),
+            "severity": detection.severity.value,
+            "confidence": round(detection.confidence, 2),
+            "description": detection.description,
+            "box": (
+                {
+                    "x": detection.box.x,
+                    "y": detection.box.y,
+                    "width": detection.box.width,
+                    "height": detection.box.height,
+                }
+                if detection.box
+                else None
+            ),
+            "box_measured": detection.box_is_measured,
+            "box_label": (
+                f"{detection.hazard_type.value.replace('_', ' ')} · "
+                f"{detection.confidence:.2f}"
+            ),
+            "model": detection.model_name,
+        }
 
     # ------------------------------------------------------------ frames
     @app.get("/frames/{blob_key:path}")
@@ -196,28 +376,61 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         )
 
     # ------------------------------------------------------- simulation
-    @app.get("/simulation", response_class=HTMLResponse)
-    async def simulation(request: Request):
-        """Real detections beside the synthetic footage generated from them."""
+    @app.post("/api/drill")
+    async def start_drill(request: Request):
+        """Run the whole pipeline against a hazard the user describes.
+
+        Returns a job to poll. The work happens in the background because a
+        drill makes several model calls and holding the request open for that
+        would be a worse experience than watching the stages arrive.
+        """
+        body = await request.json()
+        prompt = str(body.get("prompt", "")).strip()
+        full = bool(body.get("full", False))
+        if not prompt:
+            raise HTTPException(status_code=422, detail="Describe a hazard first.")
+        if len(prompt) > 400:
+            raise HTTPException(status_code=422, detail="Keep it under 400 characters.")
+
         c = request.app.state.container
-        pairs = []
-        for case in await c.repository.list_cases(limit=1000):
-            media = S.media_for_case(c.settings.media_local_path, case.id)
-            if media:
-                pairs.append({"case": S.case_row(case), "media": media})
-        return TEMPLATES.TemplateResponse(
-            request,
-            "simulation.html",
-            {
-                "active": "simulation",
-                "pairs": pairs,
-                "score": S.media_for_case(c.settings.media_local_path, "score"),
-                "veo_model": c.settings.veo_model,
-                "tts_voice": c.settings.tts_voice,
-                "lyria_model": c.settings.lyria_model,
-                "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
-            },
-        )
+        if full and c.settings.media_provider != MediaProviderKind.VERTEX:
+            raise HTTPException(
+                status_code=409,
+                detail="Video generation is off. Set MEDIA_PROVIDER=vertex to enable it.",
+            )
+
+        job = request.app.state.drills.start(c, prompt, full=full)
+        return JSONResponse(job.as_dict(), status_code=202)
+
+    @app.get("/api/drill/{job_id}")
+    async def drill_status(request: Request, job_id: str):
+        job = request.app.state.drills.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="No such drill")
+        return job.as_dict()
+
+    @app.post("/api/cases/{case_id}/inspect")
+    async def start_inspection(request: Request, case_id: str):
+        """Run the agent over this case's clip, frame by frame. Returns a job.
+
+        Costs Vertex quota rather than money, which is why it takes a click and
+        why `InspectJobs` collapses concurrent requests for the same case onto
+        one run. Unlike the render routes there is no MEDIA_PROVIDER gate: this
+        analyses footage that already exists and generates nothing.
+        """
+        c = request.app.state.container
+        if await c.repository.get_case(case_id) is None:
+            raise HTTPException(status_code=404, detail="No such case")
+
+        job = request.app.state.inspections.start(c, case_id)
+        return JSONResponse(job.as_dict(), status_code=202)
+
+    @app.get("/api/inspect/{job_id}")
+    async def inspection_status(request: Request, job_id: str):
+        job = request.app.state.inspections.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="No such analysis")
+        return job.as_dict()
 
     @app.post("/api/simulate/{case_id}")
     async def start_render(request: Request, case_id: str):
@@ -306,6 +519,12 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         )
 
     # --------------------------------------------------------------- api
+    # Two paths for one check. Google Front End intercepts `/healthz` on a
+    # *.run.app host and answers it with its own 404 before the request reaches
+    # the container -- verified against a deployment whose /openapi.json listed
+    # /healthz and whose unknown paths correctly returned our own 404 page.
+    # `/api/healthz` is the one to use against Cloud Run.
+    @app.get("/api/healthz")
     @app.get("/healthz")
     async def healthz():
         return {"status": "ok"}
@@ -352,6 +571,25 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         if case is None:
             raise HTTPException(status_code=404, detail=f"No case {case_id}")
 
+        # A closed case is not re-opened by looking at it again, so say that
+        # rather than running the Auditor and returning a result that changed
+        # nothing. Previously this path wrote no trail entry and returned
+        # `trail_entry: null`, and the button appeared to do nothing at all.
+        if not case.is_open:
+            return JSONResponse(
+                {
+                    "case_id": case_id,
+                    "kind": case.kind.value,
+                    "still_present": False,
+                    "ran": False,
+                    "message": (
+                        f"This case closed {when(case.closed_at)} and is not re-checked. "
+                        "The road was confirmed clear against the original evidence frame."
+                    ),
+                    "trail_entry": None,
+                }
+            )
+
         before = len(await c.repository.get_trail(case_id))
         # Force it to run regardless of the decaying schedule.
         case.next_check_at = None
@@ -371,11 +609,27 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         refreshed = await c.repository.get_case_detail(case_id)
         view = S.case_detail(refreshed, c.clock.now()) if refreshed else {}
 
+        # Always say something true about what just happened. The Auditor can
+        # legitimately look and find nothing worth writing down, and "nothing was
+        # written to the trail" must not render as "the button is broken".
+        still = updated.kind.value != "cleared"
+        if entry:
+            message = entry["text"]
+        elif still:
+            message = (
+                "Looked again — the hazard is still there, and nothing has changed "
+                "since the last check, so there is nothing new to record."
+            )
+        else:
+            message = "Looked again — the road is clear. Closing the case."
+
         return JSONResponse(
             {
                 "case_id": case_id,
                 "kind": updated.kind.value,
-                "still_present": updated.kind.value != "cleared",
+                "still_present": still,
+                "ran": True,
+                "message": message,
                 "trail_entry": entry,
                 "frame_url": view.get("live_frame"),
                 "sla": view.get("sla"),

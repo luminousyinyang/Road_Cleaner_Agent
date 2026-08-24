@@ -81,6 +81,21 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------- core
     mode: Mode = Field(default=Mode.LOCAL, alias="ROAD_CLEANER_MODE")
     dry_run: bool = Field(default=True, alias="DRY_RUN")
+    # The second switch in front of a real agency.
+    #
+    # `seeds/agencies.yaml` now holds the DOTs' actual public reporting forms, so
+    # the dashboard can show where a report would really go. That makes DRY_RUN
+    # the only thing standing between this system and an automated submission to
+    # a government intake form, and one environment variable is not enough for
+    # that. Both must be set before anything is transmitted; the channels check
+    # it themselves rather than trusting callers.
+    allow_live_filing: bool = Field(default=False, alias="ALLOW_LIVE_FILING")
+    # Where this deployment answers, e.g. https://road-cleaner-....run.app
+    #
+    # Only used to turn a site-relative evidence path into a link a road crew can
+    # open from an email. Left empty, reports simply do not mention the still --
+    # a relative URL in somebody's inbox is worse than no URL.
+    public_base_url: str = Field(default="", alias="PUBLIC_BASE_URL")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     data_dir: Path = Field(default=DEFAULT_DATA_DIR, alias="DATA_DIR")
 
@@ -88,16 +103,24 @@ class Settings(BaseSettings):
     use_adk: bool = Field(default=False, alias="USE_ADK")
     vision_provider: str = Field(default=AUTO, alias="VISION_PROVIDER")
     gemini_model: str = Field(default="gemini-3.7-flash", alias="GEMINI_MODEL")
-    # Gemma is NOT available as a serverless publisher model on Vertex -- a bare
-    # model string like "gemma-3-4b-it" returns 404 no matter how the client is
-    # built (verified 2026-08-21 across 3-4b-it, 3-27b-it and 3n-e4b-it). Using it
-    # means deploying it yourself from Model Garden onto a GPU endpoint and then
-    # setting GEMMA_MODEL to that endpoint's resource name:
-    #     projects/<project>/locations/<region>/endpoints/<endpoint-id>
-    # Hence the default-off flag: enabling it without that endpoint just 404s on
-    # every frame. `missing_for_live` warns when it is on but unconfigured.
+    # Gemma 4 IS serverless on Vertex -- `gemma-4-26b-a4b-it-maas` at
+    # location=global, no GPU endpoint, verified 2026-08-22. Gemma *3* is not:
+    # every 3.x id 404s, which is what the "-maas" suffix distinguishes.
+    #
+    # It writes the drill scaffold (free text -> structured hazard spec), a small
+    # fast job well matched to a small fast model. It is deliberately kept off the
+    # detection path, where Gemini's accuracy earns its cost.
+    #
+    # The prefilter flag stays default-off: it is a cost optimisation for running
+    # thousands of frames an hour, not something a demo needs, and turning it on
+    # puts a second model in front of every frame.
     gemma_prefilter_enabled: bool = Field(default=False, alias="GEMMA_PREFILTER_ENABLED")
-    gemma_model: str = Field(default="gemma-3-4b-it", alias="GEMMA_MODEL")
+    gemma_model: str = Field(default="gemma-4-26b-a4b-it-maas", alias="GEMMA_MODEL")
+    # Vertex throttles hard. A full-speed run with no ceiling produced 165
+    # consecutive 429s and no detections at all, so the analyzer holds a
+    # semaphore and retries transient failures with backoff.
+    vision_max_concurrency: int = Field(default=4, alias="VISION_MAX_CONCURRENCY")
+    vision_max_retries: int = Field(default=5, alias="VISION_MAX_RETRIES")
     google_cloud_project: str | None = Field(default=None, alias="GOOGLE_CLOUD_PROJECT")
     google_cloud_location: str = Field(default="us-central1", alias="GOOGLE_CLOUD_LOCATION")
     google_genai_use_vertexai: bool = Field(default=True, alias="GOOGLE_GENAI_USE_VERTEXAI")
@@ -317,6 +340,26 @@ class Settings(BaseSettings):
             "NC": self.nc_511_base_url,
         }
 
+    def redirected_to(self, root: Path | str) -> Settings:
+        """A copy of these settings with *every* on-disk path under `root`.
+
+        Use this rather than setting DATA_DIR when a run must leave the real
+        data directory alone. DATA_DIR alone is not enough: `.env` ships with
+        SQLITE_PATH and BLOB_LOCAL_PATH spelled out, and an explicit setting
+        wins over the data_dir default. A run launched with DATA_DIR=./elsewhere
+        still wrote its database into ./data and destroyed a demo dataset.
+        """
+        root = Path(root)
+        return self.model_copy(
+            update={
+                "data_dir": root,
+                "sqlite_path": root / "road_cleaner.db",
+                "blob_local_path": root / "frames",
+                "media_local_path": root / "media",
+                "filing_outbox": root / "outbox",
+            }
+        )
+
     def ensure_directories(self) -> None:
         """Create the local directories the app writes to. Safe to call repeatedly."""
         for path in (
@@ -342,12 +385,17 @@ class Settings(BaseSettings):
                 missing.append("GOOGLE_CLOUD_PROJECT (Vertex AI)")
             if not self.google_genai_use_vertexai and not self.google_api_key:
                 missing.append("GOOGLE_API_KEY (Gemini Developer API)")
-        if self.gemma_prefilter_enabled and "/" not in self.gemma_model:
-            # See the note on `gemma_model`: a bare Gemma name is not a real
-            # Vertex publisher model, so this would 404 on every single frame.
+        if (
+            self.gemma_prefilter_enabled
+            and not self.gemma_model.endswith("-maas")
+            and "/" not in self.gemma_model
+        ):
+            # Serverless Gemma on Vertex is the "-maas" family. Anything else has
+            # to be a self-deployed Model Garden endpoint resource name, and a
+            # bare "gemma-3-4b-it" is neither -- it 404s on every frame.
             missing.append(
-                f"GEMMA_MODEL ({self.gemma_model!r} is not a deployed endpoint; Gemma "
-                "must be self-deployed from Model Garden and referenced as "
+                f"GEMMA_MODEL ({self.gemma_model!r} is neither a serverless '-maas' "
+                "model nor a deployed endpoint path "
                 "projects/<p>/locations/<r>/endpoints/<id>)"
             )
         if self.media_provider == MediaProviderKind.VERTEX and not self.google_cloud_project:

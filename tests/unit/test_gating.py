@@ -268,3 +268,27 @@ class TestConfigIsRespected:
             evaluate(make_detection(), [prior], [event], camera, wide).decision
             is GateDecision.SUPPRESS
         )
+
+
+def test_disagreeing_frames_say_so_rather_than_claiming_there_was_one(camera):
+    """Two looks that classified the hazard differently is not the same thing as
+    having only looked once, and the reason text should not conflate them.
+
+    Seen live: a drill staged a deer, the first vision call said `animal` and
+    the second said `pedestrian_on_highway`. The gate correctly refused to
+    corroborate them, then reported "Only one frame so far" -- which was false,
+    and hid the more interesting fact that the two looks disagreed.
+    """
+    prior = make_detection(
+        hazard=HazardType.ANIMAL, confidence=0.88,
+        at=T0 - timedelta(seconds=240), det_id="d0",
+    )
+    result = evaluate(
+        make_detection(hazard=HazardType.PEDESTRIAN_ON_HIGHWAY, confidence=0.92),
+        [prior], [], camera,
+    )
+
+    assert result.decision is GateDecision.WATCH
+    assert "Only one frame" not in result.reason
+    assert "different things" in result.reason
+    assert "animal" in result.reason

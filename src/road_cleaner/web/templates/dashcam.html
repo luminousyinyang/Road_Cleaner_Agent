@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Dashcam — Road Cleaner{% endblock %}
+
+{% block content %}
+<div class="wrap">
+  <section class="dash" id="dash">
+    <div class="dash__intro">
+      <h1 class="dash__title">Point it at a road.</h1>
+      <p class="dash__lede">
+        The same prompt, the same model, the same boxes as every case on this site —
+        reading your camera instead of a generated clip. Best on a phone, held up
+        to a windscreen.
+      </p>
+      {% if scripted %}
+      <p class="dash__warn">
+        This build is wired to the scripted analyzer, which replays
+        <code>seeds/scenarios.json</code> and will not find anything in a live
+        picture. Run with <code>VISION_PROVIDER=gemini</code>, or use the deployed
+        site.
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="dash__stage">
+      <div class="dash__frame restage__frame" id="dash-frame">
+        <video id="dash-video" playsinline autoplay muted></video>
+        <div class="run__boxes" id="dash-boxes"></div>
+        <p class="dash__idle" id="dash-idle">Camera off.</p>
+      </div>
+
+      <div class="dash__bar">
+        <button class="btn dash__go" id="dash-toggle">Start looking</button>
+        {# Appears only once something has been found. A report button with
+           nothing to report is a button that teaches you to ignore it. #}
+        <button class="btn btn--primary dash__go" id="dash-report" hidden>
+          Report it
+        </button>
+        <span class="dash__status" id="dash-status">Ready.</span>
+        <span class="dash__count" id="dash-count" hidden></span>
+      </div>
+
+      <p class="dash__said" id="dash-said" hidden></p>
+      <p class="dash__where" id="dash-where" hidden></p>
+      <p class="run__error" id="dash-error" hidden></p>
+    </div>
+
+    <p class="dash__note">
+      One look every few seconds, each one a call to <code>{{ model }}</code>.
+      Vertex throttles at roughly twenty to thirty, so this is a short demo and the
+      counter tells you where you are.
+    </p>
+    <p class="dash__note">
+      <strong>Nothing is stored.</strong> Frames go to the model and are dropped —
+      no case is opened and nothing is written to a database. <em>Report it</em>
+      draws the box into the picture and hands that, plus the finished report and
+      your coordinates, to your phone&rsquo;s share sheet. Sending it stays your
+      decision, and your hand.
+    </p>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/dashcam.js?v={{ v }}" defer></script>
+{% endblock %}

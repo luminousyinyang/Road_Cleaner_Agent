@@ -1,0 +1,12 @@
+{
+  "key": "synthetic/FL-2195/2026-08-22T19-21-07-veo-3.1-fast-generate-001.mp4",
+  "mime_type": "video/mp4",
+  "model_name": "veo-3.1-fast-generate-001",
+  "prompt": "Authentic consumer dashcam footage, recorded through a windscreen from the driver's eye height. Fixed wide-angle lens, everything in focus, no camera moves and no zoom. Flat unedited colour, mild video compression, slight engine vibration. Overcast even daylight, no lens flare, no shallow depth of field, no colour grading. The car holds a steady lane at normal traffic speed. The image is completely clean of any on-screen text: no date, no time stamp, no counter, no logo in any corner. The car is driving on a multi-lane highway. Ahead on the road in the car's own lane, about a hundred metres away, is a torn scrap of black rubber, roughly 40 centimetres long, lying completely flat on the asphalt and barely raised off the road surface, in the centre lane. It is visible but unremarkable, small at first and growing only as the car gets nearer, the way a real object does. The car approaches at a steady speed and continues past it without stopping. Throughout the shot it keeps exactly the same size and shape, and stays flat against the road surface, small enough that it covers only a narrow part of one lane and never rises higher than the kerb.",
+  "seeded_from_frame_id": "FL/FTE-CCTV-0263/20260806T162000.jpg",
+  "seeded_from_case_id": "FL-2195",
+  "duration_seconds": 8.0,
+  "size_bytes": 15045973,
+  "created_at": "2026-08-23T02:21:07.709999Z",
+  "synthetic": true
+}
