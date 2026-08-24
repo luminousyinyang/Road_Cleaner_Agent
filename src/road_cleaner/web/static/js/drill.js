@@ -9,6 +9,22 @@
 (function () {
   "use strict";
 
+  /* Where the drill happens. Null until somebody drops a pin, and the server
+     treats that as "invent a location" exactly as it always did -- the map adds
+     an option rather than adding a required field. */
+  let picked = null;
+
+  window.addEventListener("load", () => {
+    const element = document.getElementById("drill-map");
+    if (!element || !window.RoadCleanerMap) return;
+    window.RoadCleanerMap.attach(element, {
+      status: document.getElementById("drill-where"),
+      onPick: (found) => {
+        picked = found ? { lat: found.lat, lng: found.lng } : null;
+      },
+    });
+  });
+
   const root = document.getElementById("drill");
   if (!root) return;
 
@@ -49,7 +65,11 @@
       response = await fetch("/api/drill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: input.value }),
+        body: JSON.stringify(
+          picked
+            ? { prompt: input.value, lat: picked.lat, lng: picked.lng }
+            : { prompt: input.value }
+        ),
       });
     } catch (err) {
       return fail("Could not reach the server.");

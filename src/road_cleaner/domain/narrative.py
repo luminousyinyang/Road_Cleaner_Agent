@@ -257,9 +257,15 @@ def report_body(
 
 
 def report_subject(detection: Detection, where: str, tier: int = 1) -> str:
-    """`where` is a road name for a fixed camera, a place for a dropped pin."""
+    """`where` is a road name for a fixed camera, a place for a dropped pin.
+
+    A road name takes "on" -- *debris on I-285*. A place already carries its own
+    preposition, and gluing another in front produced *"debris on near Columbus,
+    OH"*, which reads like a machine talking to itself.
+    """
     prefix = "Road hazard" if tier == 1 else f"Follow-up ({_ordinal(tier)} notice) — road hazard"
-    return f"{prefix}: {hazard_title(detection).lower()} on {where}"
+    joined = where if where.startswith(("near ", "in ", "at ", "on ")) else f"on {where}"
+    return f"{prefix}: {hazard_title(detection).lower()} {joined}"
 
 
 def gate_trail_text(gate: GateResult) -> str:

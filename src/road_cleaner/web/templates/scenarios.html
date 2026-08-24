@@ -150,7 +150,13 @@
 </footer>
 {% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
 {% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="/static/js/map.js?v={{ v }}" defer></script>
 <script src="/static/js/simulate.js?v={{ v }}" defer></script>
 <script src="/static/js/drill.js?v={{ v }}" defer></script>
 {% endblock %}

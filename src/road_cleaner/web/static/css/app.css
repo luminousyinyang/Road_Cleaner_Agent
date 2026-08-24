@@ -1240,3 +1240,44 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
   background: #FBEDE7; border-left: 3px solid var(--rust); border-radius: 2px;
   color: var(--ink-2); line-height: 1.6;
 }
+
+/* --- the pin picker ----------------------------------------------------
+   Leaflet supplies its own CSS; this is only the frame around it and the line
+   underneath that says what was found there. */
+.picker { margin: 18px 0 0; max-width: 720px; }
+.picker__map {
+  height: 280px;
+  border: 1px solid var(--rule-2);
+  border-radius: var(--r-md);
+  /* Leaflet paints tiles and controls into this box; without it the rounded
+     corners are drawn over by square tiles. */
+  overflow: hidden;
+  background: var(--card);
+}
+.picker__status {
+  margin: 10px 0 0;
+  font-family: var(--mono); font-size: 11px; line-height: 1.6;
+  color: var(--muted);
+}
+.picker__status.is-bad { color: var(--rust); }
+
+/* Leaflet's own attribution is small and grey by default and inherits nothing
+   from this sheet; left visible on purpose, because OpenStreetMap's licence
+   asks for it and it costs one line. */
+.picker__map .leaflet-container { font-family: var(--mono); font-size: 10px; }
+
+@media (max-width: 720px) {
+  .picker__map { height: 220px; }
+}
+
+/* --- case page: where this is ------------------------------------------ */
+.wherecard {
+  background: var(--card); border: 1px solid var(--rule-2);
+  border-radius: var(--r-md); padding: 14px 16px;
+}
+.wherecard__map { height: 220px; margin: 0; }
+.wherecard__act { display: flex; align-items: center; gap: 10px; margin: 12px 0 0; flex-wrap: wrap; }
+.wherecard__said, .wherecard__note {
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.65; color: var(--muted);
+}
+.wherecard__note { margin: 12px 0 0; }

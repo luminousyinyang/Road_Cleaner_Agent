@@ -94,8 +94,8 @@ class TestTitles:
             "Stalled car on the shoulder"
         )
 
-    def test_the_subject_line_inherits_the_clean_title(self, camera):
-        subject = narrative.report_subject(_detection(position="lane_3"), camera)
+    def test_the_subject_line_inherits_the_clean_title(self):
+        subject = narrative.report_subject(_detection(position="lane_3"), "I-285")
         assert "lane 3" not in subject
         assert "I-285" in subject
 

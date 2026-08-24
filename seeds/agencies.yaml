@@ -228,6 +228,513 @@ agencies:
     jurisdiction_note: Signals and city streets within Fort Lauderdale.
 
 
+  # ------------------------------------- state-level entries for the three
+  # These sit alongside the district agencies above, not instead of them. The
+  # district rules run first and win whenever a camera names its owner; these
+  # exist for the other case -- a dropped pin or a dashcam, which has coordinates
+  # and no camera at all.
+  - id: ga-dot
+    name: Georgia DOT
+    level: state_dot
+    state: GA
+    channel: maintenance_form
+    endpoint: https://www.dot.ga.gov/Pages/ContactUs.aspx
+    ref_label: GEORGIA DOT
+    ref_format: RC-GA-#####
+    jurisdiction_note: State-maintained roads in Georgia, where no district rule applies.
+
+  - id: fl-dot
+    name: Florida DOT
+    level: state_dot
+    state: FL
+    channel: maintenance_form
+    endpoint: https://www.fdot.gov/info/ects/customer-service-portal
+    ref_label: FLORIDA DOT
+    ref_format: RC-FL-#####
+    jurisdiction_note: State-maintained roads in Florida, where no district rule applies.
+
+  - id: nc-dot
+    name: NCDOT
+    level: state_dot
+    state: NC
+    channel: maintenance_form
+    endpoint: https://www.ncdot.gov/contact/Pages/form.aspx?UnitName=debris&sourceUrl=/contact/
+    ref_label: NCDOT
+    ref_format: RC-NC-#####
+    jurisdiction_note: State-maintained roads in North Carolina, where no district rule applies.
+
+  # --------------------------------------------- every other mainland state
+  # One entry per state, so a hazard anywhere in the lower 48 has somewhere to
+  # go. Reached by the `state-dot-fallback` rule at the bottom of this file,
+  # which runs last -- the district and city rules above still win where they
+  # apply.
+  #
+  # `endpoint` is the state's own reporting page where one was verified, and the
+  # department's website otherwise. `email` appears only where a DOT genuinely
+  # publishes an address for this; most do not, and route through a form so
+  # reports land in their ticketing system. Nothing here is guessed -- a report
+  # sent to an invented government address is worse than one nobody sent.
+  - id: al-dot
+    name: Alabama DOT
+    level: state_dot
+    state: AL
+    channel: maintenance_form
+    endpoint: https://www.dot.state.al.us
+    ref_label: ALABAMA DOT
+    ref_format: RC-AL-#####
+    jurisdiction_note: State-maintained roads in Alabama.
+
+  - id: az-dot
+    name: Arizona DOT
+    level: state_dot
+    state: AZ
+    channel: email
+    email: info@azdot.gov
+    endpoint: https://azdot.gov/contact-us
+    ref_label: ARIZONA DOT
+    ref_format: RC-AZ-#####
+    jurisdiction_note: State-maintained roads in Arizona.
+
+  - id: ar-dot
+    name: Arkansas DOT
+    level: state_dot
+    state: AR
+    channel: maintenance_form
+    endpoint: https://www.ardot.gov/
+    ref_label: ARKANSAS DOT
+    ref_format: RC-AR-#####
+    jurisdiction_note: State-maintained roads in Arkansas.
+
+  - id: ca-dot
+    name: Caltrans
+    level: state_dot
+    state: CA
+    channel: maintenance_form
+    endpoint: https://csr.dot.ca.gov/index.php/Msrsubmit
+    ref_label: CALTRANS
+    ref_format: RC-CA-#####
+    jurisdiction_note: State-maintained roads in California.
+
+  - id: co-dot
+    name: Colorado DOT
+    level: state_dot
+    state: CO
+    channel: maintenance_form
+    endpoint: https://www.codot.gov/topcontent/contact-cdot
+    ref_label: COLORADO DOT
+    ref_format: RC-CO-#####
+    jurisdiction_note: State-maintained roads in Colorado.
+
+  - id: ct-dot
+    name: Connecticut DOT
+    level: state_dot
+    state: CT
+    channel: maintenance_form
+    endpoint: https://portal.ct.gov/dot
+    ref_label: CONNECTICUT DOT
+    ref_format: RC-CT-#####
+    jurisdiction_note: State-maintained roads in Connecticut.
+
+  - id: de-dot
+    name: DelDOT
+    level: state_dot
+    state: DE
+    channel: maintenance_form
+    endpoint: https://deldot.gov
+    ref_label: DELDOT
+    ref_format: RC-DE-#####
+    jurisdiction_note: State-maintained roads in Delaware.
+
+  - id: dc-dot
+    name: DDOT
+    level: state_dot
+    state: DC
+    channel: maintenance_form
+    endpoint: https://ddot.dc.gov/
+    ref_label: DDOT
+    ref_format: RC-DC-#####
+    jurisdiction_note: State-maintained roads in District of Columbia.
+
+  - id: id-dot
+    name: Idaho Transportation Department
+    level: state_dot
+    state: ID
+    channel: maintenance_form
+    endpoint: https://itd.idaho.gov/
+    ref_label: IDAHO TRANSPORTATION DEPARTMENT
+    ref_format: RC-ID-#####
+    jurisdiction_note: State-maintained roads in Idaho.
+
+  - id: il-dot
+    name: Illinois DOT
+    level: state_dot
+    state: IL
+    channel: maintenance_form
+    endpoint: https://idot.illinois.gov/travel-information/report-a-problem.html
+    ref_label: ILLINOIS DOT
+    ref_format: RC-IL-#####
+    jurisdiction_note: State-maintained roads in Illinois.
+
+  - id: in-dot
+    name: INDOT
+    level: state_dot
+    state: IN
+    channel: maintenance_form
+    endpoint: https://www.in.gov/indot/
+    ref_label: INDOT
+    ref_format: RC-IN-#####
+    jurisdiction_note: State-maintained roads in Indiana.
+
+  - id: ia-dot
+    name: Iowa DOT
+    level: state_dot
+    state: IA
+    channel: maintenance_form
+    endpoint: https://iowadot.gov/
+    ref_label: IOWA DOT
+    ref_format: RC-IA-#####
+    jurisdiction_note: State-maintained roads in Iowa.
+
+  - id: ks-dot
+    name: Kansas DOT
+    level: state_dot
+    state: KS
+    channel: maintenance_form
+    endpoint: https://www.ksdot.gov
+    ref_label: KANSAS DOT
+    ref_format: RC-KS-#####
+    jurisdiction_note: State-maintained roads in Kansas.
+
+  - id: ky-dot
+    name: Kentucky Transportation Cabinet
+    level: state_dot
+    state: KY
+    channel: maintenance_form
+    endpoint: https://transportation.ky.gov/
+    ref_label: KENTUCKY TRANSPORTATION CABINET
+    ref_format: RC-KY-#####
+    jurisdiction_note: State-maintained roads in Kentucky.
+
+  - id: la-dot
+    name: Louisiana DOTD
+    level: state_dot
+    state: LA
+    channel: maintenance_form
+    endpoint: https://wwwsp.dotd.la.gov/
+    ref_label: LOUISIANA DOTD
+    ref_format: RC-LA-#####
+    jurisdiction_note: State-maintained roads in Louisiana.
+
+  - id: me-dot
+    name: MaineDOT
+    level: state_dot
+    state: ME
+    channel: maintenance_form
+    endpoint: https://www.maine.gov/mdot/
+    ref_label: MAINEDOT
+    ref_format: RC-ME-#####
+    jurisdiction_note: State-maintained roads in Maine.
+
+  - id: md-dot
+    name: Maryland DOT
+    level: state_dot
+    state: MD
+    channel: maintenance_form
+    endpoint: https://www.mdot.maryland.gov/
+    ref_label: MARYLAND DOT
+    ref_format: RC-MD-#####
+    jurisdiction_note: State-maintained roads in Maryland.
+
+  - id: ma-dot
+    name: MassDOT
+    level: state_dot
+    state: MA
+    channel: maintenance_form
+    endpoint: https://www.mass.gov/forms/contact-massdot
+    ref_label: MASSDOT
+    ref_format: RC-MA-#####
+    jurisdiction_note: State-maintained roads in Massachusetts.
+
+  - id: mi-dot
+    name: Michigan DOT
+    level: state_dot
+    state: MI
+    channel: maintenance_form
+    endpoint: https://www.michigan.gov/mdot/travel/commuters/potholes
+    ref_label: MICHIGAN DOT
+    ref_format: RC-MI-#####
+    jurisdiction_note: State-maintained roads in Michigan.
+
+  - id: mn-dot
+    name: MnDOT
+    level: state_dot
+    state: MN
+    channel: maintenance_form
+    endpoint: https://www.dot.state.mn.us/information/potholes/reporting.html
+    ref_label: MNDOT
+    ref_format: RC-MN-#####
+    jurisdiction_note: State-maintained roads in Minnesota.
+
+  - id: ms-dot
+    name: Mississippi DOT
+    level: state_dot
+    state: MS
+    channel: maintenance_form
+    endpoint: https://mdot.ms.gov/
+    ref_label: MISSISSIPPI DOT
+    ref_format: RC-MS-#####
+    jurisdiction_note: State-maintained roads in Mississippi.
+
+  - id: mo-dot
+    name: MoDOT
+    level: state_dot
+    state: MO
+    channel: maintenance_form
+    endpoint: https://www.modot.org
+    ref_label: MODOT
+    ref_format: RC-MO-#####
+    jurisdiction_note: State-maintained roads in Missouri.
+
+  - id: mt-dot
+    name: Montana DT
+    level: state_dot
+    state: MT
+    channel: maintenance_form
+    endpoint: https://www.mdt.mt.gov/
+    ref_label: MONTANA DT
+    ref_format: RC-MT-#####
+    jurisdiction_note: State-maintained roads in Montana.
+
+  - id: ne-dot
+    name: Nebraska DOT
+    level: state_dot
+    state: NE
+    channel: maintenance_form
+    endpoint: https://dot.nebraska.gov/
+    ref_label: NEBRASKA DOT
+    ref_format: RC-NE-#####
+    jurisdiction_note: State-maintained roads in Nebraska.
+
+  - id: nv-dot
+    name: Nevada DOT
+    level: state_dot
+    state: NV
+    channel: maintenance_form
+    endpoint: https://www.dot.nv.gov/
+    ref_label: NEVADA DOT
+    ref_format: RC-NV-#####
+    jurisdiction_note: State-maintained roads in Nevada.
+
+  - id: nh-dot
+    name: New Hampshire DOT
+    level: state_dot
+    state: NH
+    channel: maintenance_form
+    endpoint: https://www.nh.gov/dot/
+    ref_label: NEW HAMPSHIRE DOT
+    ref_format: RC-NH-#####
+    jurisdiction_note: State-maintained roads in New Hampshire.
+
+  - id: nj-dot
+    name: New Jersey DOT
+    level: state_dot
+    state: NJ
+    channel: maintenance_form
+    endpoint: https://www.njdotproblemreporting.nj.gov/
+    ref_label: NEW JERSEY DOT
+    ref_format: RC-NJ-#####
+    jurisdiction_note: State-maintained roads in New Jersey.
+
+  - id: nm-dot
+    name: New Mexico DOT
+    level: state_dot
+    state: NM
+    channel: maintenance_form
+    endpoint: https://www.dot.nm.gov/
+    ref_label: NEW MEXICO DOT
+    ref_format: RC-NM-#####
+    jurisdiction_note: State-maintained roads in New Mexico.
+
+  - id: ny-dot
+    name: NYSDOT
+    level: state_dot
+    state: NY
+    channel: maintenance_form
+    endpoint: https://www.dot.ny.gov/about-nysdot/contact
+    ref_label: NYSDOT
+    ref_format: RC-NY-#####
+    jurisdiction_note: State-maintained roads in New York.
+
+  - id: nd-dot
+    name: North Dakota DOT
+    level: state_dot
+    state: ND
+    channel: maintenance_form
+    endpoint: https://www.dot.nd.gov
+    ref_label: NORTH DAKOTA DOT
+    ref_format: RC-ND-#####
+    jurisdiction_note: State-maintained roads in North Dakota.
+
+  - id: oh-dot
+    name: Ohio DOT
+    level: state_dot
+    state: OH
+    channel: maintenance_form
+    endpoint: https://www.transportation.ohio.gov/help-center
+    ref_label: OHIO DOT
+    ref_format: RC-OH-#####
+    jurisdiction_note: State-maintained roads in Ohio.
+
+  - id: ok-dot
+    name: Oklahoma DOT
+    level: state_dot
+    state: OK
+    channel: maintenance_form
+    endpoint: https://oklahoma.gov/odot.html
+    ref_label: OKLAHOMA DOT
+    ref_format: RC-OK-#####
+    jurisdiction_note: State-maintained roads in Oklahoma.
+
+  - id: or-dot
+    name: Oregon DOT
+    level: state_dot
+    state: OR
+    channel: maintenance_form
+    endpoint: https://www.oregon.gov/odot/
+    ref_label: OREGON DOT
+    ref_format: RC-OR-#####
+    jurisdiction_note: State-maintained roads in Oregon.
+
+  - id: pa-dot
+    name: PennDOT
+    level: state_dot
+    state: PA
+    channel: maintenance_form
+    endpoint: https://www.pa.gov/services/penndot/report-a-roadway-concern
+    ref_label: PENNDOT
+    ref_format: RC-PA-#####
+    jurisdiction_note: State-maintained roads in Pennsylvania.
+
+  - id: ri-dot
+    name: Rhode Island DOT
+    level: state_dot
+    state: RI
+    channel: maintenance_form
+    endpoint: https://www.dot.ri.gov
+    ref_label: RHODE ISLAND DOT
+    ref_format: RC-RI-#####
+    jurisdiction_note: State-maintained roads in Rhode Island.
+
+  - id: sc-dot
+    name: SCDOT
+    level: state_dot
+    state: SC
+    channel: maintenance_form
+    endpoint: https://www.scdot.org/
+    ref_label: SCDOT
+    ref_format: RC-SC-#####
+    jurisdiction_note: State-maintained roads in South Carolina.
+
+  - id: sd-dot
+    name: South Dakota DOT
+    level: state_dot
+    state: SD
+    channel: maintenance_form
+    endpoint: https://dot.sd.gov
+    ref_label: SOUTH DAKOTA DOT
+    ref_format: RC-SD-#####
+    jurisdiction_note: State-maintained roads in South Dakota.
+
+  - id: tn-dot
+    name: TDOT
+    level: state_dot
+    state: TN
+    channel: maintenance_form
+    endpoint: https://www.tn.gov/tdot/engineering-operations-division/potholes.html
+    ref_label: TDOT
+    ref_format: RC-TN-#####
+    jurisdiction_note: State-maintained roads in Tennessee.
+
+  - id: tx-dot
+    name: TxDOT
+    level: state_dot
+    state: TX
+    channel: maintenance_form
+    endpoint: https://www.txdot.gov/
+    ref_label: TXDOT
+    ref_format: RC-TX-#####
+    jurisdiction_note: State-maintained roads in Texas.
+
+  - id: ut-dot
+    name: UDOT
+    level: state_dot
+    state: UT
+    channel: maintenance_form
+    endpoint: https://www.udot.utah.gov/
+    ref_label: UDOT
+    ref_format: RC-UT-#####
+    jurisdiction_note: State-maintained roads in Utah.
+
+  - id: vt-dot
+    name: VTrans
+    level: state_dot
+    state: VT
+    channel: maintenance_form
+    endpoint: https://vtrans.vermont.gov/
+    ref_label: VTRANS
+    ref_format: RC-VT-#####
+    jurisdiction_note: State-maintained roads in Vermont.
+
+  - id: va-dot
+    name: VDOT
+    level: state_dot
+    state: VA
+    channel: maintenance_form
+    endpoint: https://my.vdot.virginia.gov/
+    ref_label: VDOT
+    ref_format: RC-VA-#####
+    jurisdiction_note: State-maintained roads in Virginia.
+
+  - id: wa-dot
+    name: WSDOT
+    level: state_dot
+    state: WA
+    channel: maintenance_form
+    endpoint: https://wsdot.wa.gov/
+    ref_label: WSDOT
+    ref_format: RC-WA-#####
+    jurisdiction_note: State-maintained roads in Washington.
+
+  - id: wv-dot
+    name: West Virginia DOT
+    level: state_dot
+    state: WV
+    channel: maintenance_form
+    endpoint: https://transportation.wv.gov
+    ref_label: WEST VIRGINIA DOT
+    ref_format: RC-WV-#####
+    jurisdiction_note: State-maintained roads in West Virginia.
+
+  - id: wi-dot
+    name: WisDOT
+    level: state_dot
+    state: WI
+    channel: maintenance_form
+    endpoint: https://wisconsindot.gov/
+    ref_label: WISDOT
+    ref_format: RC-WI-#####
+    jurisdiction_note: State-maintained roads in Wisconsin.
+
+  - id: wy-dot
+    name: Wyoming DOT
+    level: state_dot
+    state: WY
+    channel: maintenance_form
+    endpoint: https://www.dot.state.wy.us
+    ref_label: WYOMING DOT
+    ref_format: RC-WY-#####
+    jurisdiction_note: State-maintained roads in Wyoming.
+
 # Rules are evaluated top to bottom; the first match wins. They run before any
 # model is consulted, and in practice they resolve almost everything.
 rules:
@@ -268,3 +775,71 @@ rules:
     match:
       road_prefix: ["I-", "US-", "SR-", "GA-", "FL-", "NC-"]
     use_camera_owner: true
+
+  - id: state-dot-fallback
+    # Skipped by the first pass and consulted only after the model has declined.
+    # A rule that matches everything, placed in front of the reasoner, means the
+    # reasoner is never asked anything.
+    last_resort: true
+    description: >-
+      Last resort, and the one that makes a dropped pin or a dashcam work at all.
+      Every rule above it selects `use_camera_owner`, and a location that came
+      from a coordinate has no camera and therefore no owner -- so without this,
+      anything outside the seeded GA/FL/NC cameras resolved to nobody and the
+      report was held. State-maintained roads are the state DOT's unless a more
+      specific rule above already claimed them.
+    match:
+      # Only where the location is a bare coordinate. A camera on a named road
+      # that matched nothing is held, not handed to the state on the grounds
+      # that it is in the state -- a private drive is not theirs.
+      road_unknown: true
+    agency_by_state:
+      AL: al-dot
+      GA: ga-dot
+      FL: fl-dot
+      NC: nc-dot
+      AZ: az-dot
+      AR: ar-dot
+      CA: ca-dot
+      CO: co-dot
+      CT: ct-dot
+      DE: de-dot
+      DC: dc-dot
+      ID: id-dot
+      IL: il-dot
+      IN: in-dot
+      IA: ia-dot
+      KS: ks-dot
+      KY: ky-dot
+      LA: la-dot
+      ME: me-dot
+      MD: md-dot
+      MA: ma-dot
+      MI: mi-dot
+      MN: mn-dot
+      MS: ms-dot
+      MO: mo-dot
+      MT: mt-dot
+      NE: ne-dot
+      NV: nv-dot
+      NH: nh-dot
+      NJ: nj-dot
+      NM: nm-dot
+      NY: ny-dot
+      ND: nd-dot
+      OH: oh-dot
+      OK: ok-dot
+      OR: or-dot
+      PA: pa-dot
+      RI: ri-dot
+      SC: sc-dot
+      SD: sd-dot
+      TN: tn-dot
+      TX: tx-dot
+      UT: ut-dot
+      VT: vt-dot
+      VA: va-dot
+      WA: wa-dot
+      WV: wv-dot
+      WI: wi-dot
+      WY: wy-dot

@@ -16,9 +16,11 @@
 
 {% block content %}
 <div class="wrap">
-  {# One column now. The sidebar carried a second copy of the report, a
-     reference caveat and an SLA panel that repeated the run below it. #}
-  <div class="detail detail--single">
+  {# The sidebar came back for one thing. It used to carry a second copy of the
+     report, a reference caveat and an SLA panel restating the run below it, and
+     all of that is still gone. What is here instead is a control: where this
+     happened, and the ability to say it happened somewhere else. #}
+  <div class="detail">
     <div>
       <p class="detail__meta">{{ d.road }}{% if d.county %} · {{ d.county }} COUNTY{% endif %}</p>
       <p class="detail__where">{{ d.case.location }}</p>
@@ -186,11 +188,39 @@
 
     </div>
 
+    <aside class="side">
+      <div class="wherecard">
+        <p class="section-label" style="margin:0 0 10px">Where this is</p>
+        <div class="picker__map wherecard__map" id="case-map"
+             data-lat="{{ d.lat if d.lat is not none else '' }}"
+             data-lng="{{ d.lng if d.lng is not none else '' }}"></div>
+        <p class="picker__status" id="case-where">{{ d.case.location }}</p>
+        <div class="wherecard__act">
+          <button class="btn btn--ghost" id="case-move" hidden>Move this case here</button>
+          <span class="wherecard__said" id="case-moved" hidden></span>
+        </div>
+        <p class="wherecard__note">
+          Click the map to put the hazard somewhere else. Moving it re-runs the
+          jurisdiction lookup, so the agency changes with the road. The detections,
+          the trail and anything already filed stay exactly as they were — a pin
+          drop is not new evidence.
+        </p>
+      </div>
+
+      <a class="btn btn--ghost btn--block" href="/#library">Back to the scenarios</a>
+    </aside>
+
   </div>
 </div>
 {% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
 {% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="/static/js/map.js?v={{ v }}" defer></script>
 <script src="/static/js/case.js?v={{ v }}" defer></script>
 <script src="/static/js/inspect.js?v={{ v }}" defer></script>
 {% endblock %}

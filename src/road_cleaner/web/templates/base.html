@@ -11,6 +11,10 @@
   <link rel="stylesheet" href="/static/css/tokens.css?v={{ v }}">
   <link rel="stylesheet" href="/static/css/{% block stylesheet %}app.css{% endblock %}?v={{ v }}">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230F5340'/><text x='16' y='22' font-family='monospace' font-size='15' font-weight='bold' fill='white' text-anchor='middle'>RC</text></svg>">
+  {# For pages that need something extra in the head. Distinct from the
+     `stylesheet` block above, which *replaces* app.css rather than adding to it,
+     so there was previously no way to pull in a library's own CSS. #}
+  {% block head %}{% endblock %}
 </head>
 <body>
 {% block nav %}

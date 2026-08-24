@@ -195,14 +195,14 @@ class DrillJobs:
     def get(self, job_id: str) -> DrillJob | None:
         return self._jobs.get(job_id)
 
-    def start(self, container, prompt: str, *, full: bool = False) -> DrillJob:
+    def start(self, container, prompt: str, *, full: bool = False, pin=None) -> DrillJob:
         job = DrillJob(id=uuid.uuid4().hex[:12], prompt=prompt.strip())
         self._jobs[job.id] = job
         self._forget_old()
-        asyncio.create_task(self._run(container, job, full))
+        asyncio.create_task(self._run(container, job, full, pin))
         return job
 
-    async def _run(self, container, job: DrillJob, full: bool) -> None:
+    async def _run(self, container, job: DrillJob, full: bool, pin=None) -> None:
         from road_cleaner.pipeline.drill import Drill, DrillError
 
         async def on_progress(result) -> None:
@@ -211,7 +211,9 @@ class DrillJobs:
             job.result = result.as_dict()
 
         try:
-            outcome = await Drill(container).run(job.prompt, full=full, on_progress=on_progress)
+            outcome = await Drill(container).run(
+                job.prompt, full=full, pin=pin, on_progress=on_progress
+            )
         except asyncio.CancelledError:
             job.state = "failed"
             job.error = "The server stopped before the drill finished."

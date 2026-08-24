@@ -985,3 +985,184 @@ class TestThePageSaysWhatTheSystemNowIs:
         # Collapsed, because the sentence wraps in the template.
         body = " ".join(client.get("/about").text.split())
         assert "A dashcam pass has nothing to return to" in body
+
+
+class TestTheDashcamReportsToTheRightAgency:
+    """A phone gives coordinates. Everything else is worked out from them.
+
+    This is the route that makes the dashcam a reporting tool rather than a
+    detector: it turns two numbers into a state, a state into an agency, and an
+    agency into an addressed report. It sends nothing and stores nothing.
+    """
+
+    def _report(self, client, **over):
+        payload = {
+            "lat": 39.9612, "lng": -82.9988, "hazard": "debris",
+            "severity": "high", "confidence": 0.92,
+            "description": "A shredded tyre tread in the travel path ahead.",
+            "model": "gemini-3.7-flash",
+        }
+        payload.update(over)
+        return client.post("/api/dashcam/report", json=payload)
+
+    def test_it_names_the_state_dot_for_wherever_you_are(self, client):
+        body = self._report(client).json()
+        assert body["state"] == "OH"
+        assert "Ohio" in body["agency"]
+
+    def test_a_state_we_never_seeded_still_works(self, client):
+        """The registry covers the mainland, not just the three demo states."""
+        body = self._report(client, lat=45.6770, lng=-111.0429).json()
+        assert body["state"] == "MT"
+        assert body["agency"]
+
+    def test_the_report_leads_with_coordinates(self, client):
+        body = self._report(client).json()
+        assert body["location"].startswith("39.96120, -82.99880")
+        assert "near Columbus, OH" in body["location"]
+        assert body["location"] in body["body"]
+
+    def test_the_subject_reads_like_a_person_wrote_it(self, client):
+        """Not "debris on 39.96120, -82.99880"."""
+        assert self._report(client).json()["subject"].endswith("near Columbus, OH")
+
+    def test_an_email_appears_only_where_one_is_published(self, client):
+        """Most state DOTs route through a form on purpose. Inventing an address
+        for the others would be the worst possible way to fill this field."""
+        ohio = self._report(client).json()
+        arizona = self._report(client, lat=33.4484, lng=-112.0740).json()
+        assert ohio["email"] is None and ohio["endpoint"].startswith("https://")
+        assert arizona["email"] == "info@azdot.gov"
+
+    def test_a_coordinate_we_cannot_file_about_is_refused(self, client):
+        for lat, lng in [(35.0, -140.0), (61.2, -149.9), (0.0, 0.0)]:
+            response = self._report(client, lat=lat, lng=lng)
+            assert response.status_code == 422
+            assert "mainland" in response.json()["detail"]
+
+    def test_no_coordinates_is_refused_rather_than_guessed(self, client):
+        response = client.post("/api/dashcam/report", json={"hazard": "debris"})
+        assert response.status_code == 422
+        assert "coordinates" in response.json()["detail"]
+
+    def test_reporting_writes_nothing(self, client):
+        import sqlite3
+
+        path = client.app.state.container.settings.sqlite_path
+        def counts():
+            conn = sqlite3.connect(path)
+            try:
+                return {t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                        for t in ("cases", "detections", "frames", "filings")}
+            finally:
+                conn.close()
+
+        before = counts()
+        self._report(client)
+        self._report(client, lat=30.2672, lng=-97.7431)
+        assert counts() == before
+
+
+class TestSendOpensADraft:
+    def test_the_page_never_navigates_to_an_agency_website(self, client):
+        """It used to open the intake page in a tab, which for a placeholder
+        address meant a DNS error and, for a real one, losing the demo."""
+        script = client.get("/static/js/inspect.js").text
+        assert "window.open(" not in script
+        assert "mailto:" in script
+
+    def test_a_missing_email_still_opens_a_draft(self, client):
+        script = client.get("/static/js/inspect.js").text
+        assert "does not publish" in script
+
+
+class TestTheMapPicker:
+    """Dropping a pin, and what the server says about where it landed."""
+
+    def test_where_answers_with_a_place_and_an_agency(self, client):
+        body = client.get("/api/where", params={"lat": 39.9612, "lng": -82.9988}).json()
+        assert body["state"] == "OH"
+        assert "near Columbus" in body["short"]
+        assert "Ohio" in body["agency"]
+        # A pin has no camera and no owner, so it cannot have come from any of
+        # the camera-owner rules. Which of the remaining two answered depends on
+        # whether a reasoner is wired up, and both are correct.
+        assert body["rule"] in ("state-dot-fallback",) or body["rule"].startswith("reasoner:")
+
+    def test_where_refuses_what_it_cannot_file_about(self, client):
+        for lat, lng in [(35.0, -140.0), (61.2, -149.9)]:
+            response = client.get("/api/where", params={"lat": lat, "lng": lng})
+            assert response.status_code == 422
+            assert "mainland" in response.json()["detail"]
+
+    def test_where_writes_nothing(self, client):
+        import sqlite3
+
+        path = client.app.state.container.settings.sqlite_path
+        def count():
+            conn = sqlite3.connect(path)
+            try:
+                return conn.execute("SELECT COUNT(*) FROM cameras").fetchone()[0]
+            finally:
+                conn.close()
+
+        before = count()
+        client.get("/api/where", params={"lat": 30.2672, "lng": -97.7431})
+        assert count() == before, "a pin drop created a camera"
+
+    def test_the_drill_offers_a_map(self, client):
+        body = client.get("/").text
+        assert 'id="drill-map"' in body
+        assert "leaflet" in body.lower()
+
+    def test_the_case_page_offers_one_too(self, client, a_case):
+        body = client.get(f"/cases/{a_case.id}").text
+        assert 'id="case-map"' in body
+        assert 'id="case-move"' in body
+
+    def test_openstreetmap_not_google(self, client):
+        """The project ruled Google Maps out on ToS grounds and wrote it down."""
+        script = client.get("/static/js/map.js").text
+        assert "openstreetmap" in script.lower()
+        assert "googleapis" not in script
+        assert "OpenStreetMap</a>" in script, "attribution is a licence condition"
+
+
+class TestMovingACase:
+    def test_a_case_can_be_moved_and_the_agency_follows(self, client, populated):
+        _, cases = populated
+        case = cases[0]
+        response = client.post(
+            f"/api/cases/{case.id}/location", json={"lat": 39.9612, "lng": -82.9988}
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["state"] == "OH"
+        assert "near Columbus, OH" in body["location"]
+        assert "Ohio" in (body["agency"] or "")
+
+        # And it stuck.
+        again = client.get(f"/api/cases/{case.id}").json()
+        assert "Columbus" in again["case"]["location"]
+
+    def test_moving_leaves_the_record_of_what_happened_alone(self, client, populated):
+        """A pin drop is not new evidence about what the camera saw."""
+        _, cases = populated
+        case = next((c for c in cases if c.was_filed), cases[0])
+        before = client.get(f"/api/cases/{case.id}").json()
+
+        client.post(f"/api/cases/{case.id}/location", json={"lat": 30.2672, "lng": -97.7431})
+        after = client.get(f"/api/cases/{case.id}").json()
+
+        assert len(after["trail"]) == len(before["trail"])
+        assert after["case"]["detection_ids"] == before["case"]["detection_ids"]
+
+    def test_it_refuses_a_coordinate_it_cannot_file_about(self, client, a_case):
+        response = client.post(
+            f"/api/cases/{a_case.id}/location", json={"lat": 0.0, "lng": 0.0}
+        )
+        assert response.status_code == 422
+
+    def test_an_unknown_case_is_a_404(self, client):
+        response = client.post("/api/cases/NOPE-1/location", json={"lat": 39.9, "lng": -83.0})
+        assert response.status_code == 404

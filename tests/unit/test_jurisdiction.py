@@ -154,3 +154,48 @@ class TestUnresolved:
         cam = camera(state="FL", road="Florida's Turnpike", county="Orange")
         result = await registry.resolve(cam, detection(), reasoner=ScriptedReasoner())
         assert result.rule_id == "toll-facility"
+
+
+class TestADroppedPinFindsSomebody:
+    """The case the whole nationwide registry exists for.
+
+    Every rule above the fallback selects `use_camera_owner`, and a location that
+    arrived as two numbers has no camera and therefore no owner. Before the
+    fallback, a hazard reported from a phone in Ohio resolved to nobody.
+    """
+
+    def _pin(self, state):
+        return camera(state=state, road="an unnamed road", county=None)
+
+    @pytest.mark.parametrize("state", ["OH", "TX", "MT", "CA", "NY", "GA", "FL", "NC"])
+    async def test_a_pin_resolves_in_every_state(self, registry, state):
+        result = await registry.resolve(self._pin(state), detection(), reasoner=None)
+        assert result.resolved, f"a pin in {state} had nowhere to go"
+        assert result.agency.state == state
+
+    async def test_a_named_road_that_matched_nothing_is_still_held(self, registry):
+        """The fallback is not a licence to route anything anywhere.
+
+        A private drive is not state-maintained, and handing it to the state DOT
+        on the grounds that it is in that state is exactly the misfiling the
+        rules exist to prevent.
+        """
+        cam = camera(state="GA", road="Private Drive", county="Nowhere")
+        result = await registry.resolve(cam, detection(), reasoner=None)
+        assert not result.resolved
+
+    async def test_the_reasoner_is_still_asked_first(self, registry):
+        """A rule that matches everything, placed before the model, means the
+        model is never consulted. The fallback runs after it, not instead."""
+        from road_cleaner.adapters.reasoning.scripted_reasoner import ScriptedReasoner
+
+        cam = camera(state="NC", road="Private Drive", county="Nowhere")
+        result = await registry.resolve(cam, detection(), reasoner=ScriptedReasoner())
+        assert result.rule_id.startswith("reasoner:")
+
+    async def test_the_district_rules_still_win_for_a_real_camera(self, registry):
+        """Adding a state-level entry must not steal traffic from the districts."""
+        cam = camera(state="NC", road="I-40", county="Wake", owner_agency_id="nc-dot-d5")
+        result = await registry.resolve(cam, detection(), reasoner=None)
+        assert result.agency.id == "nc-dot-d5"
+        assert result.rule_id != "state-dot-fallback"

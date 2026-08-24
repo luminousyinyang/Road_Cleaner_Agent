@@ -120,7 +120,7 @@ class DrillResult:
 _SCAFFOLD_PROMPT = """You turn a short description of a road hazard into a structured record.
 
 Reply with ONLY a JSON object, no prose and no code fence, with exactly these keys:
-  "state"        one of GA, FL, NC
+  "state"        a two-letter US state code in the lower 48, e.g. GA, OH, TX
   "road"         a road designation like "I-85", "I-4", "US-70", "GA-400"
   "direction"    "northbound", "southbound", "eastbound" or "westbound"
   "county"       a real county in that state
@@ -224,8 +224,10 @@ class Drill:
             spec["severity"] = Severity(spec.get("severity", "medium")).value
         except (KeyError, ValueError) as exc:
             raise DrillError(f"Scaffold named something we do not model: {exc}") from exc
-        if spec["state"] not in _STATE_CENTRES:
-            raise DrillError(f"Unsupported state: {spec['state']!r}. This fleet covers GA, FL, NC.")
+        # No longer refused if it is outside GA/FL/NC. The registry covers every
+        # mainland state now, so a scaffold that says "Ohio" is a location this
+        # system can genuinely file about. A state it has never heard of still
+        # falls back to a seeded centroid so the drill can run.
         return spec
 
     @staticmethod
@@ -244,17 +246,34 @@ class Drill:
                 break
         return place or "unnamed interchange"
 
-    def _camera(self, spec: dict[str, Any], case_id: str) -> Camera:
-        lat, lng = _STATE_CENTRES[spec["state"]]
+    def _camera(self, spec: dict[str, Any], case_id: str, pin=None) -> Camera:
+        """The invented camera the drill stages its scene at.
+
+        With a dropped pin the coordinate is real and the state comes from the
+        boundary it fell in, so the jurisdiction lookup is answering a genuine
+        question about a genuine place. Without one, the scaffold's guess is
+        planted at a state centroid as it always was.
+        """
+        if pin is not None:
+            lat, lng, state = pin.lat, pin.lng, pin.state
+            # `road_unknown` is what lets the state-level fallback claim a
+            # coordinate. A pin has no road name, and the scaffold's invented one
+            # would be a road that does not exist at that spot.
+            road, place = "an unnamed road", pin.short
+        else:
+            lat, lng = _STATE_CENTRES.get(spec["state"], _STATE_CENTRES["GA"])
+            state = spec["state"]
+            road, place = spec["road"], self._place(spec.get("place"))
+
         return Camera(
             id=f"{_SIM_PREFIX}-CCTV-{case_id.split('-')[-1]}",
-            state=spec["state"],
-            name=self._place(spec.get("place")),
-            road=spec["road"],
-            direction=spec.get("direction"),
+            state=state,
+            name=place,
+            road=road,
+            direction=None if pin is not None else spec.get("direction"),
             lat=lat,
             lng=lng,
-            county=spec.get("county"),
+            county=None if pin is not None else spec.get("county"),
             snapshot_url="drill://invented",
             # Left unset on purpose. A camera that does not exist has no known
             # owner, so the jurisdiction rules cannot shortcut to `use_camera_owner`
@@ -264,7 +283,9 @@ class Drill:
         )
 
     # ------------------------------------------------------------- the run
-    async def run(self, text: str, *, full: bool = False, on_progress=None) -> DrillResult:
+    async def run(
+        self, text: str, *, full: bool = False, pin=None, on_progress=None
+    ) -> DrillResult:
         """Drive the pipeline end to end. `full` adds a Veo render.
 
         `on_progress(result)` is called after each stage so a UI can stream.
@@ -296,7 +317,7 @@ class Drill:
         spec = await self._scaffold(text)
         result.spec = spec
         case_id = await repo.next_case_id(_SIM_PREFIX)
-        camera = self._camera(spec, case_id)
+        camera = self._camera(spec, case_id, pin)
         await repo.upsert_camera(camera)
         await advance(
             "scaffold",

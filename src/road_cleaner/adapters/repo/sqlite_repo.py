@@ -292,7 +292,12 @@ class SqliteCaseRepository:
                    -- the headline on the same page disagreeing about what the
                    -- case is. They describe the same thing and move together.
                    hazard_title=excluded.hazard_title,
-                   hazard_type=excluded.hazard_type""",
+                   hazard_type=excluded.hazard_type,
+                   -- Same omission, found the same way: a case moved to a new
+                   -- coordinate reported its new home and then still read as the
+                   -- old one on reload. A case's location was fixed at open
+                   -- because it came from a camera; it does not have to be.
+                   location=excluded.location, state=excluded.state""",
             (
                 case.id, case.camera_id, case.state, case.kind.value,
                 case.hazard_type.value, case.hazard_title, case.location,

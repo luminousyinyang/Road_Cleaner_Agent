@@ -45,6 +45,11 @@ class JurisdictionResult:
         return self.agency is not None
 
 
+# What a camera's `road` says when nobody knows what road it is. A pin and a
+# dashcam both produce one of these.
+_UNNAMED = frozenset({"", "unknown", "an unnamed road", "an unidentified road"})
+
+
 class JurisdictionRegistry:
     def __init__(self, agencies: list[Agency], rules: list[dict]) -> None:
         self.agencies = {a.id: a for a in agencies}
@@ -78,9 +83,20 @@ class JurisdictionRegistry:
         """Every agency that could plausibly own this camera's road."""
         return [a for a in self.agencies.values() if a.state == camera.state]
 
-    def resolve_by_rules(self, camera: Camera, detection: Detection) -> JurisdictionResult:
-        """Walk the rules in order; first match wins."""
+    def resolve_by_rules(
+        self, camera: Camera, detection: Detection, *, last_resort: bool = False
+    ) -> JurisdictionResult:
+        """Walk the rules in order; first match wins.
+
+        A rule marked `last_resort` is skipped here and only consulted by the
+        pass that runs *after* the model. That ordering is the whole point of
+        having one: a rule that matches everything would otherwise sit in front
+        of the reasoner and it would never be asked anything. Knowable facts
+        first, judgement second, and a sane default only when both have passed.
+        """
         for rule in self.rules:
+            if bool(rule.get("last_resort")) != last_resort:
+                continue
             agency = self._apply(rule, camera, detection)
             if agency is not None:
                 return JurisdictionResult(
@@ -118,6 +134,15 @@ class JurisdictionRegistry:
         if match.get("has_owner_agency") and not camera.owner_agency_id:
             return None
 
+        # For a location that arrived as two numbers -- a dropped pin, a phone --
+        # there is no road name to reason about and no camera to own it. That is
+        # the only case the state-level fallback is allowed to claim. A camera
+        # sitting on a named road that matched nothing is a different situation:
+        # we know something about it, none of the rules wanted it, and holding is
+        # the honest answer. A private drive is not the state DOT's problem.
+        if match.get("road_unknown") and camera.road.strip().lower() not in _UNNAMED:
+            return None
+
         # --- the rule matched; now work out which agency it names ---
         if rule.get("use_camera_owner"):
             return self.agencies.get(camera.owner_agency_id or "")
@@ -150,19 +175,15 @@ class JurisdictionRegistry:
             return result
 
         if reasoner is None:
-            return JurisdictionResult(
-                None,
-                "unresolved",
-                "No rule matched and no reasoner available. Holding rather than guessing.",
-                0.0,
-            )
+            return self.resolve_by_rules(camera, detection, last_resort=True)
 
         candidates = self.candidates_for(camera)
         verdict = await reasoner.resolve_jurisdiction(camera, detection, candidates)
         if verdict is None:
-            return JurisdictionResult(
-                None, "unresolved", "Could not determine the responsible agency.", 0.0
-            )
+            # The model looked and could not choose. A state-maintained road
+            # still belongs to the state DOT, which is a default rather than a
+            # guess -- every more specific rule has already declined.
+            return self.resolve_by_rules(camera, detection, last_resort=True)
 
         agency = self.agencies.get(verdict.agency_id)
         if agency is None:
@@ -170,9 +191,7 @@ class JurisdictionRegistry:
                 "Reasoner named an agency that isn't in the registry",
                 extra={"agency_id": verdict.agency_id, "camera_id": camera.id},
             )
-            return JurisdictionResult(
-                None, "unresolved", f"Unknown agency '{verdict.agency_id}'.", 0.0
-            )
+            return self.resolve_by_rules(camera, detection, last_resort=True)
 
         return JurisdictionResult(
             agency=agency,

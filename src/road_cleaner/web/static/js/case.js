@@ -108,3 +108,74 @@
     image.src = `${result.frame_url}?t=${Date.now()}`;
   }
 })();
+
+/* Where this case is, and moving it.
+ *
+ * A case's location was fixed when it opened, from whatever camera saw it. That
+ * is right for a camera and wrong for a re-staged clip, which could have
+ * happened anywhere -- so the pin is draggable and the agency follows it.
+ *
+ * Deliberately two steps. Clicking the map only proposes; a second, named click
+ * commits. Moving a case rewrites a stored record, and a stray click on a map
+ * should not do that.
+ */
+(function () {
+  "use strict";
+
+  const element = document.getElementById("case-map");
+  if (!element) return;
+
+  const status = document.getElementById("case-where");
+  const button = document.getElementById("case-move");
+  const said = document.getElementById("case-moved");
+  const caseId = document.getElementById("run")?.dataset.case
+    || document.getElementById("recheck")?.dataset.case;
+
+  let proposed = null;
+
+  window.addEventListener("load", () => {
+    if (!window.RoadCleanerMap) return;
+    const lat = parseFloat(element.dataset.lat);
+    const lng = parseFloat(element.dataset.lng);
+
+    window.RoadCleanerMap.attach(element, {
+      lat: Number.isFinite(lat) ? lat : undefined,
+      lng: Number.isFinite(lng) ? lng : undefined,
+      status,
+      onPick: (found) => {
+        proposed = found ? { lat: found.lat, lng: found.lng } : null;
+        button.hidden = !proposed;
+        said.hidden = true;
+      },
+    });
+  });
+
+  button?.addEventListener("click", async () => {
+    if (!proposed || !caseId) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(
+        `/api/cases/${encodeURIComponent(caseId)}/location`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(proposed),
+        }
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+
+      said.textContent = `Moved. Now ${body.location}, and ${body.agency || "nobody"} owns it.`;
+      said.hidden = false;
+      button.hidden = true;
+      // The header, the report and the form payload all read from the case, so
+      // they are stale the moment this succeeds. Reload rather than patch six
+      // places and risk one of them disagreeing.
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (err) {
+      said.textContent = `Could not move it: ${(err && err.message) || err}`;
+      said.hidden = false;
+      button.disabled = false;
+    }
+  });
+})();

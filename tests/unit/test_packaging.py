@@ -30,6 +30,8 @@ RUNTIME_FILES = [
     "src/road_cleaner/agents/prompts/clearance.md",
     "src/road_cleaner/adapters/repo/schema.sql",
     "seeds/agencies.yaml",
+    "src/road_cleaner/adapters/geo/data/us_states.json.gz",
+    "src/road_cleaner/adapters/geo/data/us_places.tsv.gz",
     "seeds/cameras.json",
     "seeds/scenarios.json",
 ]

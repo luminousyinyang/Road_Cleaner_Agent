@@ -259,9 +259,40 @@
   async function report() {
     if (!found) return;
     reportButton.disabled = true;
+    status.textContent = "Working out whose road this is…";
 
-    const subject = `Road hazard: ${found.result.hazard_label}`;
-    const body = reportText(found);
+    // Ask the server who owns the road at these coordinates and how it words a
+    // report. The same registry and the same sentences the rest of the system
+    // uses -- this is not a second, parallel way of writing a report.
+    let addressed = null;
+    if (found.where) {
+      try {
+        const response = await fetch("/api/dashcam/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lat: found.where.lat,
+            lng: found.where.lng,
+            hazard: found.result.hazard,
+            severity: found.result.severity,
+            confidence: found.result.confidence,
+            description: found.result.description,
+            model: found.result.model,
+          }),
+        });
+        if (response.ok) {
+          addressed = await response.json();
+        } else {
+          fail(await describe(response));
+        }
+      } catch (err) {
+        fail(`Could not work out the agency: ${(err && err.message) || err}`);
+      }
+    }
+
+    const subject = addressed ? addressed.subject : `Road hazard: ${found.result.hazard_label}`;
+    const body = addressed ? withFallbackNote(addressed) : reportText(found);
+    const to = addressed && addressed.email ? addressed.email : "";
 
     try {
       const image = await burnBox(found);
@@ -269,13 +300,21 @@
         ? new File([image], "road-hazard.jpg", { type: "image/jpeg" })
         : null;
 
+      // The share sheet is the only path that can carry the picture, so it is
+      // tried first. Mail is one of its targets, and the draft arrives with the
+      // marked still genuinely attached.
       if (file && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: subject, text: body });
-        status.textContent = "Handed to your share sheet — sending is still your call.";
+        status.textContent = addressed
+          ? `Handed over, addressed to ${addressed.agency}. Sending is still your call.`
+          : "Handed to your share sheet — sending is still your call.";
       } else {
         window.location.href =
-          `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        status.textContent = "Opened a draft. Your browser cannot attach the still to it.";
+          `mailto:${encodeURIComponent(to)}` +
+          `?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        status.textContent = to
+          ? `Opened a draft to ${addressed.agency}. Your browser cannot attach the still.`
+          : "Opened a draft. Your browser cannot attach the still to it.";
       }
     } catch (err) {
       // A cancelled share sheet throws AbortError. That is somebody deciding
@@ -286,6 +325,19 @@
     } finally {
       reportButton.disabled = false;
     }
+  }
+
+  /* Most state DOTs publish a form, not an inbox -- they route reports into a
+     ticketing system on purpose. Where there is no address to send to, the draft
+     still opens with everything written, and says where it needs to go. */
+  function withFallbackNote(addressed) {
+    if (addressed.email) return addressed.body;
+    return [
+      addressed.body,
+      "",
+      `${addressed.agency} does not publish an email for this. Submit it at:`,
+      addressed.endpoint || "their website",
+    ].join("\n");
   }
 
   /* The report, written the same way the rest of the system writes one:

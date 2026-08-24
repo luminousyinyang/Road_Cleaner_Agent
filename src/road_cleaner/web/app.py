@@ -399,7 +399,21 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 detail="Video generation is off. Set MEDIA_PROVIDER=vertex to enable it.",
             )
 
-        job = request.app.state.drills.start(c, prompt, full=full)
+        # A dropped pin, if there was one. Optional on purpose -- the drill has
+        # always been able to invent a location, and the map adds a choice rather
+        # than a requirement.
+        pin = None
+        if body.get("lat") is not None and body.get("lng") is not None:
+            from road_cleaner.adapters.geo.places import OutsideCoverageError, locate
+
+            try:
+                pin = locate(float(body["lat"]), float(body["lng"]))
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=422, detail=f"Bad pin: {exc}") from exc
+            except OutsideCoverageError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        job = request.app.state.drills.start(c, prompt, full=full, pin=pin)
         return JSONResponse(job.as_dict(), status_code=202)
 
     @app.get("/api/drill/{job_id}")
@@ -408,6 +422,68 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         if job is None:
             raise HTTPException(status_code=404, detail="No such drill")
         return job.as_dict()
+
+    @app.post("/api/cases/{case_id}/location")
+    async def move_case(request: Request, case_id: str):
+        """Move a case to a coordinate somebody dropped a pin on.
+
+        A case's location was fixed at the moment it opened, from whatever camera
+        saw it. That is right for a camera and wrong for everything else: a clip
+        can be re-staged anywhere, and a demo should be able to happen where the
+        person watching it lives.
+
+        What moves: the case's location string, its camera's coordinates, and --
+        because the road may now belong to somebody else entirely -- the agency.
+        What does not move: the trail, the filings, and the detections. Those are
+        the record of what happened, and a pin drop is not new evidence about it.
+        """
+        from road_cleaner.adapters.geo.places import OutsideCoverageError, locate
+
+        c = request.app.state.container
+        detail = await c.repository.get_case_detail(case_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="No such case")
+
+        body = await request.json()
+        try:
+            place = locate(float(body["lat"]), float(body["lng"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=f"Bad coordinates: {exc}") from exc
+        except OutsideCoverageError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        case, camera = detail.case, detail.camera
+        if camera is not None:
+            camera.lat, camera.lng = place.lat, place.lng
+            camera.state = place.state
+            camera.name = place.short
+            # A moved case is no longer at the camera that saw it, so it stops
+            # claiming a road name and a district owner it has no basis for.
+            camera.road = "an unnamed road"
+            camera.direction = None
+            camera.county = None
+            camera.owner_agency_id = None
+            await c.repository.upsert_camera(camera)
+
+        case.location = place.label
+        case.state = place.state
+
+        if camera is not None and detail.detections:
+            verdict = await c.jurisdiction.resolve(camera, detail.detections[0], c.reasoner)
+            if verdict.resolved:
+                case.agency_id = verdict.agency.id
+                case.agency_name = verdict.agency.name
+                case.channel = verdict.agency.channel
+                case.ref_label = verdict.agency.display_ref_label
+        case.updated_at = c.clock.now()
+        await c.repository.save_case(case)
+
+        return {
+            "case_id": case.id,
+            "location": case.location,
+            "state": case.state,
+            "agency": case.agency_name,
+        }
 
     @app.post("/api/cases/{case_id}/inspect")
     async def start_inspection(request: Request, case_id: str):
@@ -431,6 +507,157 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         if job is None:
             raise HTTPException(status_code=404, detail="No such analysis")
         return job.as_dict()
+
+    @app.get("/api/where")
+    async def where(request: Request, lat: float, lng: float):
+        """What is at this coordinate, and who owns the road there.
+
+        The map picker asks this on every pin drop, so it is deliberately small:
+        no report is composed and nothing is written. It answers the two
+        questions a person dropping a pin actually has -- *where is this* and
+        *who would hear about it* -- and refuses, with a reason, when the answer
+        is neither.
+        """
+        from road_cleaner.adapters.geo.places import OutsideCoverageError, locate
+        from road_cleaner.domain.enums import HazardType, Severity
+        from road_cleaner.domain.models import Detection
+
+        c = request.app.state.container
+        try:
+            place = locate(lat, lng)
+        except OutsideCoverageError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        camera = Camera(
+            id="PIN",
+            state=place.state,
+            name=place.short,
+            # The sentinel that lets `state-dot-fallback` claim this. A pin has
+            # no road name, and pretending otherwise is what the fallback's
+            # `road_unknown` matcher exists to prevent.
+            road="an unnamed road",
+            lat=lat,
+            lng=lng,
+            snapshot_url="pin://dropped",
+            owner_agency_id=None,
+        )
+        probe = Detection(
+            camera_id="PIN", frame_id="", hazard_type=HazardType.DEBRIS,
+            lane_position="unknown", severity=Severity.MEDIUM,
+            confidence=0.9, description="",
+        )
+        verdict = await c.jurisdiction.resolve(camera, probe, c.reasoner)
+
+        return {
+            "lat": place.lat,
+            "lng": place.lng,
+            "location": place.label,
+            "short": place.short,
+            "state": place.state,
+            "state_name": place.state_name,
+            "nearest": place.nearest,
+            "nearest_km": place.nearest_km,
+            "agency": verdict.agency.name if verdict.agency else None,
+            "agency_id": verdict.agency.id if verdict.agency else None,
+            "email": (verdict.agency.email if verdict.agency else None) or None,
+            "endpoint": (verdict.agency.endpoint if verdict.agency else None) or None,
+            "rule": verdict.rule_id,
+        }
+
+    @app.post("/api/dashcam/report")
+    async def dashcam_report(request: Request):
+        """Turn a dashcam finding into a report addressed to the right agency.
+
+        The phone sends what it saw and where it was; this works out which state
+        that coordinate is in, which agency owns roads there, and composes the
+        report in the same words the rest of the system uses.
+
+        **It does not send anything, and it stores nothing.** It returns text and
+        an address. The last action belongs to whoever is holding the phone --
+        their mail app, their thumb.
+        """
+        from road_cleaner.adapters.geo.places import OutsideCoverageError, locate
+        from road_cleaner.domain import narrative
+        from road_cleaner.domain.enums import HazardType, Severity
+        from road_cleaner.domain.models import Detection
+
+        c = request.app.state.container
+        body = await request.json()
+
+        try:
+            lat, lng = float(body["lat"]), float(body["lng"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "A report needs coordinates. Without them a crew has nowhere "
+                    "to go, and there is no way to tell whose road this is."
+                ),
+            ) from None
+
+        try:
+            place = locate(lat, lng)
+        except OutsideCoverageError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        try:
+            hazard = HazardType(body.get("hazard", "debris"))
+        except ValueError:
+            hazard = HazardType.DEBRIS
+
+        detection = Detection(
+            camera_id="DASHCAM",
+            frame_id="",
+            hazard_type=hazard,
+            lane_position="unknown",
+            severity=Severity(body.get("severity", "medium")),
+            confidence=float(body.get("confidence", 0.0)),
+            description=str(body.get("description", "")).strip(),
+            model_name=str(body.get("model", "unknown")),
+        )
+
+        # A pin has no camera, so it has no owner -- which is exactly what the
+        # `state-dot-fallback` rule exists for.
+        camera = Camera(
+            id="DASHCAM",
+            state=place.state,
+            name=place.nearest or place.state_name,
+            road="an unnamed road",
+            lat=lat,
+            lng=lng,
+            snapshot_url="dashcam://live",
+            owner_agency_id=None,
+        )
+        verdict = await c.jurisdiction.resolve(camera, detection, c.reasoner)
+        if not verdict.resolved:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"No agency on file for {place.state_name}. Holding rather "
+                    "than sending this to the wrong desk."
+                ),
+            )
+
+        agency = verdict.agency
+        report = narrative.report_body(
+            detection,
+            place.label,
+            narrative.observed_at(c.clock.now()),
+            attachment_count=1,
+            tier=1,
+        )
+        return {
+            "location": place.label,
+            "state": place.state,
+            "agency": agency.name,
+            # Present only when that DOT genuinely publishes an address. Most
+            # route through a form instead, and the page says so rather than
+            # inventing somewhere for the mail to go.
+            "email": agency.email or None,
+            "endpoint": agency.endpoint or None,
+            "subject": narrative.report_subject(detection, place.short, tier=1),
+            "body": report,
+        }
 
     @app.post("/api/simulate/{case_id}")
     async def start_render(request: Request, case_id: str):

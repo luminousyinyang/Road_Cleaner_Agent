@@ -311,7 +311,8 @@
     document.getElementById("run-sent").textContent = destination
       ? `Composed and stopped. Nothing was transmitted to ${agency}.`
       : `No agency resolved, so there is nowhere to send this. Held rather than misfiled.`;
-    document.getElementById("run-to").textContent = destination || "—";
+    document.getElementById("run-to").textContent =
+      (current && current.report_email) || destination || "—";
     document.getElementById("run-by").textContent = describeChannel(channel);
 
     paintFields(payload);
@@ -349,30 +350,35 @@
     });
   }
 
-  /* Offered, not taken. A destination that cannot resolve says so instead of
-     pretending to be a link, because a dead link that looks live is the thing
-     this whole panel exists to avoid. */
+  /* Send opens a mail draft. Always.
+
+     It used to open the agency's intake page in a tab, which meant leaving the
+     demo for a third-party form -- and for the placeholder addresses this
+     shipped with, a DNS error. A draft is better on every count: the report is
+     already written, it stays on this machine until somebody presses send, and
+     it works the same whether or not that DOT publishes an inbox.
+
+     Most do not. They route reports through a web form on purpose, so the
+     ticket lands in their system rather than a mailbox. Where that is the case
+     the draft still opens with the report in it, and carries the form's URL so
+     it can be pasted in. Nothing is invented to fill the To: line. */
   function offerLink(destination, channel) {
     const link = document.getElementById("run-open");
-    if (!destination) {
-      link.hidden = true;
-      return;
+    const email = (current && current.report_email) || "";
+    const subject = (current && current.report_subject) || "";
+    let body = (current && current.report_body) || "";
+
+    if (!email && destination) {
+      body += `\n\n${(current && current.agency) || "This agency"} does not publish `
+        + `an email for this. Submit it at:\n${destination}`;
     }
-    // `.invalid` is reserved by RFC 2606 precisely so it can never resolve, and
-    // the seed registry uses it deliberately. Anything under it is not a link.
-    const routable = !/\.invalid\b/i.test(destination);
-    if (!routable) {
-      link.hidden = true;
-      return;
-    }
+
     link.hidden = false;
+    link.removeAttribute("target");
     link.href =
-      channel === "email"
-        ? `mailto:${encodeURIComponent(destination)}` +
-          `?subject=${encodeURIComponent((current && current.report_subject) || "")}` +
-          `&body=${encodeURIComponent((current && current.report_body) || "")}`
-        : destination;
-    link.textContent = channel === "email" ? "Open in your mail app" : "Open the intake page";
+      `mailto:${encodeURIComponent(email)}` +
+      `?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    link.textContent = email ? `Open a draft to ${email}` : "Open a draft";
   }
 
   document.getElementById("run-copy")?.addEventListener("click", async (event) => {

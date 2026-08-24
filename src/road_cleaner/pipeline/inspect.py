@@ -132,6 +132,10 @@ class InspectResult:
     # client or the agency's intake page rather than explain that it could.
     report_destination: str | None = None
     report_channel: str | None = None
+    # The agency's published address, when it has one. Send builds a mail draft
+    # around this; where a DOT publishes only a form -- which most do -- the
+    # draft opens anyway and carries the form's URL instead.
+    report_email: str | None = None
     report_payload: dict[str, Any] = field(default_factory=dict)
     model_name: str | None = None
     # Whether a real vision model looked at these frames, or the local scripted
@@ -427,6 +431,7 @@ class Inspector:
         result.report_destination = preview.destination
         result.report_channel = preview.channel
         result.report_payload = preview.payload
+        result.report_email = verdict.agency.email or None
         by_key["report"].state = "done"
         by_key["report"].detail = "Draft ready — not sent"
         result.analyzed_at = datetime.now().astimezone().isoformat(timespec="seconds")

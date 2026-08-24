@@ -281,3 +281,37 @@ class TestReSavingACase:
             assert stored.hazard_title == "Debris in a travel lane"
         finally:
             await repo.close()
+
+
+class TestACaseCanMove:
+    """A case's location was fixed when it opened, from whatever camera saw it.
+
+    That is right for a camera and wrong for a re-staged clip, which could have
+    happened anywhere. The upsert did not carry `location` or `state`, so a moved
+    case reported its new home and then read as the old one on reload — the same
+    omission as `hazard_type`, found the same way.
+    """
+
+    async def test_location_and_state_survive_a_re_save(self, tmp_path):
+        from road_cleaner.domain.enums import HazardType
+        from road_cleaner.domain.models import Case
+
+        repo = SqliteCaseRepository(tmp_path / "moved.db")
+        await repo.initialize()
+        try:
+            case = Case(
+                id="GA-0001", camera_id="c", state="GA", hazard_type=HazardType.DEBRIS,
+                hazard_title="Debris in a travel lane",
+                location="I-285 westbound at Camp Creek Pkwy",
+            )
+            await repo.save_case(case)
+
+            case.location = "39.96120, -82.99880 — near Columbus, OH"
+            case.state = "OH"
+            await repo.save_case(case)
+
+            stored = await repo.get_case("GA-0001")
+            assert stored.location.endswith("near Columbus, OH")
+            assert stored.state == "OH"
+        finally:
+            await repo.close()

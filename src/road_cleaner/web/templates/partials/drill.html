@@ -11,9 +11,10 @@
       <h2>Give it a hazard. Watch it work.</h2>
       <p class="drill__lede">
         You should not have to wait for a real mattress to fall off a real truck to
-        see whether this thing works. Describe one, and the fleet will stage it,
-        look at it twice, decide whether it is worth reporting, work out whose road
-        it is, and write the report — then stop, because the road is not real.
+        see whether this thing works. Describe one and drop a pin anywhere in the
+        lower 48. The fleet stages it, looks more than once, decides whether it is
+        worth reporting, works out whose road that actually is, and writes the
+        report — then stops, because the road is not real.
       </p>
     </div>
   </div>
@@ -24,6 +25,17 @@
            value="a mattress in the fast lane on I-85 at rush hour">
     <button class="btn btn--syn" id="drill-run" type="submit">Run the drill</button>
   </form>
+
+  {# Where it happens. Click the map and the drill uses that coordinate rather
+     than inventing a location — which also means the jurisdiction lookup is
+     doing real work, on a state nobody seeded, instead of choosing between
+     three known answers. #}
+  <div class="picker">
+    <div class="picker__map" id="drill-map" data-map></div>
+    <p class="picker__status" id="drill-where">
+      Click anywhere in the lower 48. Without a pin, the drill invents a location.
+    </p>
+  </div>
 
   <p class="drill__examples">
     try:

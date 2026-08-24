@@ -333,6 +333,7 @@ def last_analysis(
             **analysis,
             "report_destination": destination,
             "report_channel": channel,
+            "report_email": detail.agency.email or None,
             # Recomputed too: the fields are built from the endpoint and the
             # report text, so a stale payload would name a stale destination.
             "report_payload": payload,
@@ -460,6 +461,10 @@ def case_detail(detail: CaseWithDetail, now: datetime) -> dict[str, Any]:
             else ""
         ),
         "county": detail.camera.county if detail.camera else None,
+        # Where the pin sits when the page opens. The map is a correction tool,
+        # so it starts on the answer the case already has rather than empty.
+        "lat": detail.camera.lat if detail.camera else None,
+        "lng": detail.camera.lng if detail.camera else None,
         "live_frame": frame_url(evidence_frame(case)),
         "box_style": box_style(case),
         "box_label": box_caption(case, opening),
