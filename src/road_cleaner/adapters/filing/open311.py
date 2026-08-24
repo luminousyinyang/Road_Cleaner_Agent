@@ -60,7 +60,12 @@ class Open311Channel(BaseFilingChannel):
             "address_string": case.location,
             "attribute[hazard_type]": case.hazard_type.value,
             "attribute[severity]": case.severity.value,
-            "attribute[source]": "Road Cleaner automated camera monitoring",
+            # Worded exactly as `maintenance_form`'s `reportSource`. The two
+            # channels described the same system to two cities in two different
+            # ways -- one as a dashcam, one as camera monitoring -- and a report
+            # should not change its account of where it came from depending on
+            # which desk receives it.
+            "attribute[source]": "dashcam footage, reviewed by an automated agent",
             "attribute[confidence]": f"{case.confidence:.2f}",
             "attribute[camera_id]": case.camera_id,
             # GeoReport v2 defines these and this channel sent none of them, so

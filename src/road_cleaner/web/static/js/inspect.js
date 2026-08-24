@@ -50,6 +50,10 @@
   // True only while a run is streaming. During a run the newest box wins,
   // because watching them land is the demo; afterwards the playhead decides.
   let running = false;
+  // The evidence still as a File, once the browser has confirmed it will share
+  // one. Held ready so the click handler can share without awaiting anything --
+  // see `offerShare` for why that matters.
+  let shareable = null;
 
   // Repaint from whatever the last run left behind, so the page is not blank
   // before anyone clicks.
@@ -317,6 +321,7 @@
 
     paintFields(payload);
     offerLink(destination, channel);
+    offerShare(agency);
 
     panel.hidden = false;
     button.disabled = true;
@@ -397,6 +402,68 @@
     link.hidden = true;
     link.removeAttribute("href");
   }
+
+  /* The one handover that can carry the picture.
+
+     `mailto:` cannot attach anything, ever: RFC 6068 leaves attachments out and
+     every client refuses them, because a page able to attach arbitrary local
+     files would be a hole rather than a feature. The share sheet can, and Mail
+     is one of its targets, so on a phone the draft arrives with the marked
+     still genuinely in it. This is the same path `dashcam.js` already takes.
+
+     The file is fetched here rather than in the click handler deliberately.
+     Safari requires `navigator.share` to run inside a user gesture, and an
+     awaited fetch in between loses it -- so the File is ready before the button
+     is ever shown. Where file sharing does not exist (Firefox, desktop Linux)
+     the button stays hidden and the link below remains the answer, which is why
+     the evidence URL in the report body still matters. */
+  async function offerShare(agency) {
+    const button = document.getElementById("run-share");
+    if (!button) return;
+    button.hidden = true;
+    shareable = null;
+
+    const still = current && current.evidence_url;
+    if (!still || !navigator.canShare) return;
+
+    try {
+      const response = await fetch(still);
+      if (!response.ok) return;
+      const blob = await response.blob();
+      const file = new File([blob], `road-hazard-${(current && current.case_id) || "case"}.jpg`, {
+        type: blob.type || "image/jpeg",
+      });
+      // Asked about this exact file: canShare({files}) is false on desktops
+      // that support sharing text but not attachments, which is most of them.
+      if (!navigator.canShare({ files: [file] })) return;
+      shareable = file;
+      button.textContent = `Send to ${agency} with the still attached`;
+      button.hidden = false;
+    } catch {
+      // No share, no button. Copy and the link are untouched.
+    }
+  }
+
+  document.getElementById("run-share")?.addEventListener("click", async (event) => {
+    if (!shareable) return;
+    const said = document.getElementById("run-copied");
+    try {
+      await navigator.share({
+        files: [shareable],
+        title: (current && current.report_subject) || "Road hazard",
+        text: (current && current.report_body) || "",
+      });
+      said.textContent = "Handed over with the still attached. Sending is still your call.";
+      said.hidden = false;
+    } catch (err) {
+      // Dismissing the sheet is a choice, not a failure, and saying "that did
+      // not work" to somebody who just tapped Cancel is a lie.
+      if (err && err.name === "AbortError") return;
+      said.textContent = "Your browser would not open the share sheet.";
+      said.hidden = false;
+    }
+    event.currentTarget.blur();
+  });
 
   document.getElementById("run-copy")?.addEventListener("click", async (event) => {
     const said = document.getElementById("run-copied");

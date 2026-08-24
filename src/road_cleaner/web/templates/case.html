@@ -147,6 +147,10 @@
             <dl class="handover__grid handover__grid--fields" id="run-fields"></dl>
             <div class="handover__actions">
               <button class="btn btn--ghost" id="run-copy">Copy the report</button>
+              <!-- Only path that can carry the picture. Hidden until the
+                   browser confirms it can share a file, because offering it and
+                   then failing is worse than not offering it. -->
+              <button class="btn btn--ghost" id="run-share" hidden></button>
               <a class="btn btn--ghost" id="run-open" hidden rel="noopener" target="_blank"></a>
               <span class="handover__copied" id="run-copied" hidden></span>
             </div>

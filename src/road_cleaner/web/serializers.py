@@ -276,6 +276,76 @@ def box_style(case: Case) -> str | None:
     )
 
 
+def _recomposed_report(
+    analysis: dict[str, Any], detail: CaseWithDetail, settings: Any
+) -> dict[str, Any] | None:
+    """The report text rebuilt from live facts, or None to keep what was cached.
+
+    The detection comes from the sidecar rather than from `detail.detections`,
+    which looks like the obvious source and is the wrong one: outside a real
+    sweep those rows are the scripted seeds, so composing from them would trade
+    the sentence Gemini actually wrote for a fixture. What the model saw belongs
+    to the run; where it is and who owns it belong to the record.
+
+    Returns None rather than a half-built report whenever the sidecar predates a
+    field or holds a value the current enums do not know. A stale body is worse
+    than a fresh one and better than a broken one.
+    """
+    from road_cleaner.domain import narrative
+    from road_cleaner.domain.enums import HazardType, Severity
+
+    if not analysis.get("report_body"):
+        return None  # nothing was composed, so there is nothing to re-say
+    found = [f for f in (analysis.get("frames") or []) if f.get("found")]
+    if not found:
+        return None
+
+    # The frame the evidence still was cut from, so the picture and the words
+    # describe the same moment. Falls back to the last frame that saw anything.
+    at = analysis.get("evidence_at")
+    frame = next((f for f in found if f.get("at") == at), found[-1])
+
+    try:
+        # `.astimezone()` because parsing an ISO string yields a fixed offset,
+        # which `observed_at` renders as "UTC-07:00" where a live run -- whose
+        # datetime came from `now().astimezone()` -- renders "PDT". Same instant
+        # either way; this keeps a recomposed report and a fresh one identical.
+        when = datetime.fromisoformat(analysis["analyzed_at"]).astimezone()
+        detection = Detection(
+            camera_id=detail.case.camera_id,
+            frame_id=str(frame.get("index", "")),
+            analyzed_at=when,
+            hazard_type=HazardType(frame["hazard"]),
+            lane_position=frame.get("lane") or "unknown",
+            severity=Severity(frame["severity"]),
+            confidence=float(frame["confidence"]),
+            description=frame["description"],
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    # A site-relative path is useless in somebody's inbox; PUBLIC_BASE_URL is
+    # what makes it openable. Same rule as `Inspector._public`: a whole URL or
+    # no URL, never half of one.
+    base = (getattr(settings, "public_base_url", "") or "").rstrip("/")
+    still = analysis.get("evidence_url")
+    return {
+        "report_subject": narrative.report_subject(
+            detection,
+            detail.camera.road if detail.camera else detail.case.location,
+            tier=1,
+        ),
+        "report_body": narrative.report_body(
+            detection,
+            detail.case.location,
+            narrative.observed_at(when),
+            attachment_count=0,
+            evidence_url=f"{base}{still}" if base and still else None,
+            tier=1,
+        ),
+    }
+
+
 def last_analysis(
     media_root: Path | str | None,
     case_id: str,
@@ -312,6 +382,20 @@ def last_analysis(
     url = analysis.get("evidence_url")
     if url and not (Path(media_root) / url.removeprefix("/media/")).is_file():
         analysis = {**analysis, "evidence_url": None, "evidence_at": None}
+
+    # The wording is derived too, from two things that move independently: what
+    # the model saw, which is in this sidecar and is the real Gemini output, and
+    # where the case is, which lives on the record and changes the moment
+    # somebody drops a pin. Recomposing from both costs no Vertex call and is
+    # what stops a cached body insisting stills are attached -- nothing has
+    # enclosed one since `attachment_count` went to 0, and `mailto:` could not
+    # carry it even if something did.
+    #
+    # Done before the block below, which feeds this text into the form payload.
+    if detail is not None:
+        rewritten = _recomposed_report(analysis, detail, settings)
+        if rewritten is not None:
+            analysis = {**analysis, **rewritten}
 
     # Where a report goes is a property of the agency, not of the run that
     # happened to compose it -- so it is recomputed every time rather than read

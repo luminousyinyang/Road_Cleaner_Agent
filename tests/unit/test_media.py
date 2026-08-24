@@ -554,6 +554,135 @@ class TestTheCachedAnalysisShownOnTheCasePage:
         assert shown["agency"] == "Tennessee DOT"
         assert shown["report_destination"] == "tdot@example.invalid"
 
+    # A sidecar shaped like the ones in deploy/_bundle: real Gemini wording,
+    # composed by a version of `report_body` that promised attachments.
+    STALE = {
+        "case_id": "GA-4462",
+        "agency": "Georgia DOT — District 7",
+        "evidence_url": "/media/synthetic/GA-4462/evidence.jpg",
+        "evidence_at": 5.8,
+        "analyzed_at": "2026-08-23T12:09:25-07:00",
+        "report_subject": "Road hazard: debris in lane 1 on I-75",
+        "report_body": (
+            "Reporting a road hazard observed on a public traffic camera.\n\n"
+            "Location: I-75 northbound at Howell Mill Road, in lane 1.\n"
+            "Camera: GDOT-CCTV-0312\nFirst observed: Sun Aug 23, 12:08 PM\n"
+            "Confirmed present at: 12:09 PM\n\nA large piece of shredded tire tread.\n\n"
+            "4 timestamped camera frames are attached.\n\n"
+            "Filed automatically by Road Cleaner."
+        ),
+        "frames": [
+            {"index": 0, "at": 1.0, "state": "clear", "found": False},
+            {"index": 3, "at": 5.8, "state": "found", "found": True, "hazard": "debris",
+             "lane": "lane_1", "severity": "high", "confidence": 0.91,
+             "description": "A large piece of shredded tire tread lies across the yellow line."},
+        ],
+    }
+
+    def _moved_detail(self):
+        from road_cleaner.domain.enums import AgencyLevel, Channel, HazardType
+        from road_cleaner.domain.models import Agency, Camera, Case, CaseWithDetail
+
+        return CaseWithDetail(
+            case=Case(
+                id="GA-4462", camera_id="GDOT-CCTV-0312", state="TN",
+                hazard_type=HazardType.DEBRIS, hazard_title="Debris in a travel lane",
+                location="35.85344, -83.93668 — near Rockford, TN",
+            ),
+            camera=Camera(
+                id="GDOT-CCTV-0312", state="TN", name="near Rockford, TN",
+                road="an unnamed road", lat=35.85344, lng=-83.93668,
+                snapshot_url="https://example.invalid/c.jpg",
+            ),
+            agency=Agency(
+                id="tn-dot", name="Tennessee DOT", level=AgencyLevel.STATE_DOT,
+                state="TN", channel=Channel.EMAIL, email="tdot@example.invalid",
+            ),
+        )
+
+    def test_the_report_stops_promising_attachments_nothing_encloses(self, tmp_path: Path):
+        """`mailto:` cannot carry a file, and no channel here encloses one.
+
+        The bundled sidecars were composed before `attachment_count` went to 0,
+        so the deployed demo told every agency that four frames were attached to
+        a message carrying none.
+        """
+        from road_cleaner.config import Settings
+        from road_cleaner.web.serializers import last_analysis
+
+        self._write(tmp_path, "GA-4462", self.STALE)
+        shown = last_analysis(
+            tmp_path, "GA-4462", self._moved_detail(), Settings(ROAD_CLEANER_MODE="local")
+        )
+        assert "attached" not in shown["report_body"].lower()
+        assert "timestamped camera frames" not in shown["report_body"]
+
+    def test_recomposing_keeps_what_the_model_saw(self, tmp_path: Path):
+        """The detection comes from the sidecar, not from `detail.detections`.
+
+        Those rows are the scripted seeds outside a real sweep, so composing
+        from them would swap Gemini's sentence for a fixture -- a quieter
+        regression than a false claim and a worse one for the demo.
+        """
+        from road_cleaner.config import Settings
+        from road_cleaner.web.serializers import last_analysis
+
+        self._write(tmp_path, "GA-4462", self.STALE)
+        shown = last_analysis(
+            tmp_path, "GA-4462", self._moved_detail(), Settings(ROAD_CLEANER_MODE="local")
+        )
+        assert "shredded tire tread lies across the yellow line" in shown["report_body"]
+
+    def test_recomposing_follows_the_case_when_it_moves(self, tmp_path: Path):
+        from road_cleaner.config import Settings
+        from road_cleaner.web.serializers import last_analysis
+
+        self._write(tmp_path, "GA-4462", self.STALE)
+        shown = last_analysis(
+            tmp_path, "GA-4462", self._moved_detail(), Settings(ROAD_CLEANER_MODE="local")
+        )
+        assert "near Rockford, TN" in shown["report_body"]
+        assert "Howell Mill Road" not in shown["report_body"]
+        assert "GDOT-CCTV-0312" not in shown["report_body"]
+
+    def test_the_still_is_linked_once_the_deployment_knows_its_own_url(self, tmp_path: Path):
+        """The only way a picture reaches an agency through a `mailto:` link."""
+        from road_cleaner.config import Settings
+        from road_cleaner.web.serializers import last_analysis
+
+        folder = self._write(tmp_path, "GA-4462", self.STALE)
+        (folder / "evidence.jpg").write_bytes(b"\xff\xd8stub")
+        shown = last_analysis(
+            tmp_path, "GA-4462", self._moved_detail(),
+            Settings(ROAD_CLEANER_MODE="local", PUBLIC_BASE_URL="https://rc.example.test/"),
+        )
+        assert "https://rc.example.test/media/synthetic/GA-4462/evidence.jpg" in shown["report_body"]
+
+    def test_no_base_url_means_no_half_a_link(self, tmp_path: Path):
+        from road_cleaner.config import Settings
+        from road_cleaner.web.serializers import last_analysis
+
+        folder = self._write(tmp_path, "GA-4462", self.STALE)
+        (folder / "evidence.jpg").write_bytes(b"\xff\xd8stub")
+        shown = last_analysis(
+            tmp_path, "GA-4462", self._moved_detail(), Settings(ROAD_CLEANER_MODE="local")
+        )
+        assert "/media/synthetic" not in shown["report_body"]
+        assert "The marked still" not in shown["report_body"]
+
+    def test_a_sidecar_it_cannot_read_keeps_its_cached_wording(self, tmp_path: Path):
+        """Better a stale report than a half-built one."""
+        from road_cleaner.config import Settings
+        from road_cleaner.web.serializers import last_analysis
+
+        broken = {**self.STALE, "frames": [{"index": 3, "at": 5.8, "found": True,
+                                            "hazard": "not_a_hazard_type"}]}
+        self._write(tmp_path, "GA-4462", broken)
+        shown = last_analysis(
+            tmp_path, "GA-4462", self._moved_detail(), Settings(ROAD_CLEANER_MODE="local")
+        )
+        assert shown["report_body"] == self.STALE["report_body"]
+
     def test_a_destination_already_in_the_cache_is_left_alone(self, tmp_path: Path):
         from road_cleaner.web.serializers import last_analysis
 
