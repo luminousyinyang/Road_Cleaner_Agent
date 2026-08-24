@@ -60,6 +60,69 @@ _ADDED_COLUMNS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+# Every column of `cases` that a `Case` owns, in the order `_case_values`
+# supplies them. `correlation_key` is deliberately absent: it is not a field on
+# the model and is written separately by `set_correlation`.
+_CASE_COLUMNS: tuple[str, ...] = (
+    "id", "camera_id", "state", "kind", "hazard_type", "hazard_title", "location",
+    "severity", "confidence", "opened_at", "updated_at", "closed_at",
+    "gate_decision", "gate_reason", "agency_id", "agency_name", "channel",
+    "reference", "ref_label", "sla_deadline", "escalation_tier", "last_checked_at",
+    "next_check_at", "checks_done", "sentence", "explain", "detection_ids",
+    "frame_refs", "raw_model_json", "box", "box_label", "synthetic",
+)
+
+# What a re-save must never overwrite. `id` is the identity; `opened_at` is when
+# this case began, which is a fact about the past and not a field to refresh.
+_CASE_IMMUTABLE: frozenset[str] = frozenset({"id", "opened_at"})
+
+
+def _upsert(table: str, columns: tuple[str, ...], immutable: frozenset[str]) -> str:
+    """An INSERT that updates every column it is allowed to.
+
+    The update clause used to be written out by hand, and it fell behind the
+    column list three separate times. Each one looked different and cost an
+    afternoon: a case re-titled "Debris" while still typed `animal`; a box label
+    showing a confidence the rest of the page contradicted; a case moved to Ohio
+    that read as Georgia again on reload. All three were one column missing from
+    one list.
+
+    Deriving the clause means adding a column can no longer half-work. Anything
+    genuinely not to be touched has to be named in `immutable`, where it is a
+    decision somebody made rather than a line somebody forgot.
+    """
+    updates = ", ".join(f"{c}=excluded.{c}" for c in columns if c not in immutable)
+    return (
+        f"INSERT INTO {table} ({', '.join(columns)}) "
+        f"VALUES ({', '.join('?' * len(columns))}) "
+        f"ON CONFLICT(id) DO UPDATE SET {updates}"
+    )
+
+
+_CASE_UPSERT = _upsert("cases", _CASE_COLUMNS, _CASE_IMMUTABLE)
+
+
+def _case_values(case: Case) -> tuple:
+    """The values for `_CASE_COLUMNS`, in that order."""
+    return (
+        case.id, case.camera_id, case.state, case.kind.value,
+        case.hazard_type.value, case.hazard_title, case.location,
+        case.severity.value, case.confidence, case.opened_at.isoformat(),
+        case.updated_at.isoformat(), _iso(case.closed_at),
+        case.gate_decision.value, case.gate_reason, case.agency_id,
+        case.agency_name, case.channel.value if case.channel else None,
+        case.reference, case.ref_label, _iso(case.sla_deadline),
+        case.escalation_tier, _iso(case.last_checked_at),
+        _iso(case.next_check_at), case.checks_done,
+        case.sentence, case.explain,
+        json.dumps(case.detection_ids),
+        json.dumps([json.loads(f.model_dump_json()) for f in case.frame_refs]),
+        case.raw_model_json,
+        case.box.model_dump_json() if case.box else None, case.box_label,
+        int(case.synthetic),
+    )
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
     """Add any columns this build expects that an older database lacks."""
     for table, columns in _ADDED_COLUMNS.items():
@@ -262,60 +325,7 @@ class SqliteCaseRepository:
 
     # ------------------------------------------------------------------ cases
     async def save_case(self, case: Case) -> None:
-        await self._write(
-            """INSERT INTO cases
-               (id, camera_id, state, kind, hazard_type, hazard_title, location,
-                severity, confidence, opened_at, updated_at, closed_at, gate_decision,
-                gate_reason, agency_id, agency_name, channel, reference, ref_label,
-                sla_deadline, escalation_tier, last_checked_at, next_check_at,
-                checks_done, sentence, explain, detection_ids,
-                frame_refs, raw_model_json, box, box_label, synthetic)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET
-                   kind=excluded.kind, severity=excluded.severity,
-                   confidence=excluded.confidence, updated_at=excluded.updated_at,
-                   closed_at=excluded.closed_at, gate_decision=excluded.gate_decision,
-                   gate_reason=excluded.gate_reason, agency_id=excluded.agency_id,
-                   agency_name=excluded.agency_name, channel=excluded.channel,
-                   reference=excluded.reference, ref_label=excluded.ref_label,
-                   sla_deadline=excluded.sla_deadline,
-                   escalation_tier=excluded.escalation_tier,
-                   last_checked_at=excluded.last_checked_at,
-                   next_check_at=excluded.next_check_at,
-                   checks_done=excluded.checks_done, sentence=excluded.sentence,
-                   explain=excluded.explain, detection_ids=excluded.detection_ids,
-                   frame_refs=excluded.frame_refs, raw_model_json=excluded.raw_model_json,
-                   box=excluded.box, box_label=excluded.box_label,
-                   -- `hazard_title` was updated here while `hazard_type` was
-                   -- not, so a re-saved case could end up titled "Debris in a
-                   -- travel lane" while still typed `animal` -- the badge and
-                   -- the headline on the same page disagreeing about what the
-                   -- case is. They describe the same thing and move together.
-                   hazard_title=excluded.hazard_title,
-                   hazard_type=excluded.hazard_type,
-                   -- Same omission, found the same way: a case moved to a new
-                   -- coordinate reported its new home and then still read as the
-                   -- old one on reload. A case's location was fixed at open
-                   -- because it came from a camera; it does not have to be.
-                   location=excluded.location, state=excluded.state""",
-            (
-                case.id, case.camera_id, case.state, case.kind.value,
-                case.hazard_type.value, case.hazard_title, case.location,
-                case.severity.value, case.confidence, case.opened_at.isoformat(),
-                case.updated_at.isoformat(), _iso(case.closed_at),
-                case.gate_decision.value, case.gate_reason, case.agency_id,
-                case.agency_name, case.channel.value if case.channel else None,
-                case.reference, case.ref_label, _iso(case.sla_deadline),
-                case.escalation_tier, _iso(case.last_checked_at),
-                _iso(case.next_check_at), case.checks_done,
-                case.sentence, case.explain,
-                json.dumps(case.detection_ids),
-                json.dumps([json.loads(f.model_dump_json()) for f in case.frame_refs]),
-                case.raw_model_json,
-                case.box.model_dump_json() if case.box else None, case.box_label,
-                int(case.synthetic),
-            ),
-        )
+        await self._write(_CASE_UPSERT, _case_values(case))
 
     def _case(self, row: sqlite3.Row) -> Case:
         return Case(

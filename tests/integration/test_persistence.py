@@ -315,3 +315,122 @@ class TestACaseCanMove:
             assert stored.state == "OH"
         finally:
             await repo.close()
+
+
+class TestEveryFieldSurvivesAReSave:
+    """The bug that kept coming back, closed structurally.
+
+    `save_case` upserts, and its `DO UPDATE SET` clause used to be written out by
+    hand. Three times a column was added to the insert and forgotten in the
+    update, and each time it surfaced as something that looked unrelated:
+
+    * a case re-titled "Debris in a travel lane" while still typed `animal`;
+    * a box label showing 0.77 against a case confidence of 0.91;
+    * a case moved to Ohio that read as Georgia again on reload.
+
+    The clause is derived from the column list now. These tests are what keep
+    the column list itself honest.
+    """
+
+    def test_every_column_is_updated_except_the_ones_we_chose_not_to(self):
+        from road_cleaner.adapters.repo.sqlite_repo import (
+            _CASE_COLUMNS,
+            _CASE_IMMUTABLE,
+            _CASE_UPSERT,
+        )
+
+        for column in _CASE_COLUMNS:
+            present = f"{column}=excluded.{column}" in _CASE_UPSERT
+            if column in _CASE_IMMUTABLE:
+                assert not present, f"{column} is declared immutable but is updated"
+            else:
+                assert present, f"{column} is written on insert and never updated"
+
+    def test_the_immutable_columns_are_the_ones_we_meant(self):
+        """`id` is identity. `opened_at` is when this case began — a fact about
+        the past, not a field to refresh."""
+        from road_cleaner.adapters.repo.sqlite_repo import _CASE_IMMUTABLE
+
+        assert {"id", "opened_at"} == _CASE_IMMUTABLE
+
+    def test_the_column_list_matches_the_model(self):
+        """A field added to `Case` and forgotten here would never persist."""
+        from road_cleaner.adapters.repo.sqlite_repo import _CASE_COLUMNS
+        from road_cleaner.domain.models import Case
+
+        assert set(Case.model_fields) == set(_CASE_COLUMNS)
+
+    def test_the_column_list_matches_the_schema(self):
+        """And a column in the table that nothing writes is dead weight.
+
+        `correlation_key` is the deliberate exception: it is not a field on the
+        model and `set_correlation` owns it.
+        """
+        import re
+
+        from road_cleaner.adapters.repo.sqlite_repo import _CASE_COLUMNS, SCHEMA_PATH
+
+        block = re.search(
+            r"CREATE TABLE IF NOT EXISTS cases \((.*?)\n\);", SCHEMA_PATH.read_text(), re.S
+        ).group(1)
+        columns = {
+            line.strip().split()[0]
+            for line in block.splitlines()
+            if line.strip() and not line.strip().startswith("--")
+        }
+        assert columns - set(_CASE_COLUMNS) == {"correlation_key"}
+
+    async def test_a_changed_case_round_trips_field_by_field(self, tmp_path):
+        """The real proof: mutate everything mutable, save, reopen, compare."""
+        from datetime import UTC, datetime
+
+        from road_cleaner.domain.enums import CaseKind, Channel, GateDecision, HazardType, Severity
+        from road_cleaner.domain.models import BoundingBox, Case, FrameRef
+
+        repo = SqliteCaseRepository(tmp_path / "roundtrip.db")
+        await repo.initialize()
+        try:
+            opened = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
+            await repo.save_case(
+                Case(
+                    id="GA-0001", camera_id="cam-a", state="GA",
+                    hazard_type=HazardType.ANIMAL, hazard_title="Animal on the shoulder",
+                    location="I-285 at Camp Creek Pkwy", opened_at=opened,
+                )
+            )
+
+            changed = Case(
+                id="GA-0001", camera_id="cam-b", state="OH",
+                kind=CaseKind.ESCALATED, synthetic=True,
+                hazard_type=HazardType.DEBRIS, hazard_title="Debris in a travel lane",
+                location="39.96120, -82.99880 — near Columbus, OH",
+                severity=Severity.CRITICAL, confidence=0.91,
+                opened_at=opened,
+                updated_at=datetime(2026, 8, 5, 12, 0, tzinfo=UTC),
+                closed_at=datetime(2026, 8, 6, 12, 0, tzinfo=UTC),
+                gate_decision=GateDecision.SUPPRESS, gate_reason="already posted",
+                agency_id="oh-dot", agency_name="Ohio DOT", channel=Channel.EMAIL,
+                reference="RC-OH-12345", ref_label="OHIO DOT",
+                sla_deadline=datetime(2026, 8, 7, 12, 0, tzinfo=UTC),
+                escalation_tier=2,
+                last_checked_at=datetime(2026, 8, 6, 6, 0, tzinfo=UTC),
+                next_check_at=datetime(2026, 8, 8, 6, 0, tzinfo=UTC),
+                checks_done=7, sentence="a new sentence", explain="a new explanation",
+                detection_ids=["d1", "d2"],
+                frame_refs=[FrameRef(label="First sighting", blob_key="k.jpg", mark=True)],
+                raw_model_json='{"source":"reinspect"}',
+                box=BoundingBox(x=0.1, y=0.2, width=0.3, height=0.4),
+                box_label="debris · 0.91",
+            )
+            await repo.save_case(changed)
+
+            stored = await repo.get_case("GA-0001")
+            for field in Case.model_fields:
+                if field == "opened_at":
+                    assert stored.opened_at == opened, "opened_at must not be rewritten"
+                    continue
+                assert getattr(stored, field) == getattr(changed, field), (
+                    f"{field} did not survive a re-save"
+                )
+        finally:
+            await repo.close()
