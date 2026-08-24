@@ -221,7 +221,15 @@ __marimo__/
 # Everything the agents write while running. All of it is regenerable with
 # `make seed` / `make demo`, and none of it should ever be committed --
 # especially data/outbox/, which holds fully-composed agency reports.
-data/
+#
+# Anchored, like the matching rules in .gcloudignore and .dockerignore. An
+# unanchored `data/` matches a directory of that name at ANY depth, which also
+# swallowed src/road_cleaner/adapters/geo/data -- the two gzipped files
+# `locate()` reads. Nothing that ships in the image may be untracked: the
+# deploy uploads the working tree, so a missing file is invisible here and an
+# HTTP 500 on every dropped pin from any other checkout.
+/data/
+!src/road_cleaner/adapters/geo/data/
 *.db
 *.sqlite
 *.sqlite3

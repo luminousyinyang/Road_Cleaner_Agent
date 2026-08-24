@@ -308,13 +308,26 @@
         status.textContent = addressed
           ? `Handed over, addressed to ${addressed.agency}. Sending is still your call.`
           : "Handed to your share sheet — sending is still your call.";
-      } else {
+      } else if (to) {
         window.location.href =
-          `mailto:${encodeURIComponent(to)}` +
+          `mailto:${encodeURIComponent(to).replace(/%40/g, "@")}` +
           `?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-        status.textContent = to
-          ? `Opened a draft to ${addressed.agency}. Your browser cannot attach the still.`
-          : "Opened a draft. Your browser cannot attach the still to it.";
+        status.textContent =
+          `Opened a draft to ${addressed.agency}. Your browser cannot attach the still.`;
+      } else if (addressed && addressed.endpoint) {
+        // No inbox, so a draft has nowhere to go -- `mailto:` with an empty
+        // recipient opens nothing at all. The form is the real channel, and the
+        // report goes to the clipboard first so it survives the new tab. There
+        // is no report text on this page to fall back on, unlike the case page.
+        // `addressed.body`, not `body`: the latter carries the "submit it at
+        // <url>" note, which reads as nonsense pasted into that very form.
+        const copied = await copyText(addressed.body);
+        window.open(addressed.endpoint, "_blank", "noopener");
+        status.textContent = copied
+          ? `${addressed.agency} takes these by form, not email. Opened it — the report is on your clipboard, ready to paste.`
+          : `${addressed.agency} takes these by form, not email. Opened it — the report is above, and your browser blocked the clipboard.`;
+      } else {
+        fail("No agency resolved for this spot, so there is nowhere to send it.");
       }
     } catch (err) {
       // A cancelled share sheet throws AbortError. That is somebody deciding
@@ -327,9 +340,21 @@
     }
   }
 
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Insecure context, or permission refused. The status line says so.
+      return false;
+    }
+  }
+
   /* Most state DOTs publish a form, not an inbox -- they route reports into a
-     ticketing system on purpose. Where there is no address to send to, the draft
-     still opens with everything written, and says where it needs to go. */
+     ticketing system on purpose. This note rides along on the share-sheet path,
+     where the report lands somewhere with no recipient of its own and the URL
+     is the only thing saying where it needs to go. The form path strips it:
+     see `report`, which copies the bare body instead. */
   function withFallbackNote(addressed) {
     if (addressed.email) return addressed.body;
     return [

@@ -33,6 +33,14 @@ agencies:
     state: GA
     channel: maintenance_form
     endpoint: https://www.dot.ga.gov/Pages/ContactUs.aspx
+    # GDOT's general contact inbox, published beside *511 in the District 7
+    # brochure (AboutGeorgia/Offices/Documents/Districts/D7/D7Brochure.pdf).
+    # The district's own address, D7Communications@dot.ga.gov, is a press desk
+    # rather than a maintenance one, and the brochure's other addresses belong
+    # to named staff -- not somewhere an automated filer should put debris.
+    # *511 remains the channel GDOT actually documents for this; the form above
+    # is still the formal route, and this only gives the draft somewhere to go.
+    email: contact@dot.ga.gov
     ref_label: GEORGIA DOT
     ref_format: TMC-#####
     jurisdiction_note: >-

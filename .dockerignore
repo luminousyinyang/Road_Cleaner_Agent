@@ -7,6 +7,13 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
-data/
-design_artifacts/
+
+# Anchored, and negated, for the same reason as .gcloudignore -- see the long
+# comment there. Docker's matcher and gitignore's do NOT agree about what a bare
+# `data/` means, and this file claims to mirror that one, so the safe form is
+# the one that reads the same under both.
+/data/
+/design_artifacts/
+!src/road_cleaner/adapters/geo/data/
+
 .env

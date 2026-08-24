@@ -350,35 +350,52 @@
     });
   }
 
-  /* Send opens a mail draft. Always.
+  /* Send offers whichever handover the agency actually accepts.
 
-     It used to open the agency's intake page in a tab, which meant leaving the
-     demo for a third-party form -- and for the placeholder addresses this
-     shipped with, a DNS error. A draft is better on every count: the report is
-     already written, it stays on this machine until somebody presses send, and
-     it works the same whether or not that DOT publishes an inbox.
+     This used to build a `mailto:` unconditionally. Most agencies in the
+     registry publish a form rather than an inbox, so for them it produced
+     `mailto:?subject=...` -- a URL with nothing before the `?`. Browsers do not
+     treat that as a mail draft; Chrome swallows it and nothing opens. The note
+     naming the form went into the *body* of a draft that never appeared, so the
+     one piece of routing information was in the one place nobody could read.
 
-     Most do not. They route reports through a web form on purpose, so the
-     ticket lands in their system rather than a mailbox. Where that is the case
-     the draft still opens with the report in it, and carries the form's URL so
-     it can be pasted in. Nothing is invented to fill the To: line. */
+     So the link follows the channel. An address gets a draft. No address but a
+     form gets a link to the form, in a new tab, with `Copy the report` beside it
+     so the wording survives the trip. Neither gets nothing to click. Nothing is
+     invented to fill the To: line, and nothing is sent from here either way. */
   function offerLink(destination, channel) {
     const link = document.getElementById("run-open");
     const email = (current && current.report_email) || "";
     const subject = (current && current.report_subject) || "";
-    let body = (current && current.report_body) || "";
+    const body = (current && current.report_body) || "";
+    const agency = (current && current.agency) || "the agency";
 
-    if (!email && destination) {
-      body += `\n\n${(current && current.agency) || "This agency"} does not publish `
-        + `an email for this. Submit it at:\n${destination}`;
+    if (email) {
+      link.hidden = false;
+      link.removeAttribute("target");
+      // The `@` is left alone deliberately. Percent-encoding it is legal per
+      // RFC 6068 but some handlers refuse `mailto:a%40b.gov`, and a draft that
+      // silently fails to open is exactly the bug this replaced.
+      link.href =
+        `mailto:${encodeURIComponent(email).replace(/%40/g, "@")}` +
+        `?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      link.textContent = `Open a draft to ${email}`;
+      return;
     }
 
-    link.hidden = false;
-    link.removeAttribute("target");
-    link.href =
-      `mailto:${encodeURIComponent(email)}` +
-      `?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    link.textContent = email ? `Open a draft to ${email}` : "Open a draft";
+    if (destination) {
+      link.hidden = false;
+      link.href = destination;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = `Open the ${agency} form`;
+      return;
+    }
+
+    // No inbox and no form. There is nowhere to click through to, so the panel
+    // shows the report and the copy button and claims nothing further.
+    link.hidden = true;
+    link.removeAttribute("href");
   }
 
   document.getElementById("run-copy")?.addEventListener("click", async (event) => {

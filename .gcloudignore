@@ -16,11 +16,23 @@ __pycache__/
 
 # 1.2 GB of evidence frames and 77 MB of generated clips. The handful the demo
 # actually needs are copied into deploy/_bundle instead -- see the negation below.
-data/
-design_artifacts/
+#
+# The leading slash is load-bearing. gcloud reads this file with gitignore
+# semantics, where an unanchored `data/` matches a directory called `data` at
+# ANY depth -- which silently took src/road_cleaner/adapters/geo/data with it.
+# That directory holds the two gzipped files `locate()` reads, so the deployed
+# image had no place lookup at all: dropping a pin raised FileNotFoundError out
+# of /api/where and /api/cases/{id}/location, and the map just said "HTTP 500".
+# Local was fine the whole time, because locally the files are simply there.
+/data/
+/design_artifacts/
 
 # ...but the demo bundle must ship.
 !deploy/_bundle/
+
+# And so must the place lookup, belt and braces, in case the pattern above ever
+# loses its anchor again. Named explicitly so it is obvious this is required.
+!src/road_cleaner/adapters/geo/data/
 
 .env
 

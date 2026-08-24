@@ -1064,16 +1064,67 @@ class TestTheDashcamReportsToTheRightAgency:
 
 
 class TestSendOpensADraft:
-    def test_the_page_never_navigates_to_an_agency_website(self, client):
-        """It used to open the intake page in a tab, which for a placeholder
-        address meant a DNS error and, for a real one, losing the demo."""
-        script = client.get("/static/js/inspect.js").text
-        assert "window.open(" not in script
-        assert "mailto:" in script
+    def test_it_never_builds_a_mailto_with_an_empty_recipient(self, client):
+        """The bug this replaced.
 
-    def test_a_missing_email_still_opens_a_draft(self, client):
+        Most agencies publish a form rather than an inbox, and the link was
+        built as `mailto:${email}?subject=...` regardless. With no address that
+        renders `mailto:?subject=...`, which no browser treats as a draft --
+        Chrome swallows it and nothing opens. The recipient must be checked
+        before a draft is offered, not after.
+        """
         script = client.get("/static/js/inspect.js").text
-        assert "does not publish" in script
+        # The interpolation, not the word -- the comments above the function
+        # discuss `mailto:` at length and must not count as a construction.
+        built = "`mailto:${"
+        assert script.count(built) == 1, "expected exactly one mailto construction"
+        # And it sits inside the branch that has an address.
+        before, after = script.split("if (email) {", 1)
+        assert built not in before, "a mailto is built before the address is checked"
+        assert built in after
+
+    def test_no_inbox_offers_the_agency_form_instead(self, client):
+        """Georgia DOT and 60-odd others route reports through a web form. The
+        form is the channel, so the link goes there rather than nowhere."""
+        script = client.get("/static/js/inspect.js").text
+        assert "link.href = destination;" in script
+        assert 'link.target = "_blank"' in script
+        assert 'link.rel = "noopener"' in script
+
+    def test_neither_an_inbox_nor_a_form_offers_nothing(self, client):
+        """Rather than a link that cannot go anywhere."""
+        script = client.get("/static/js/inspect.js").text
+        assert "link.hidden = true;" in script
+
+
+class TestTheRegistryKnowsWhereGeorgiaGoes:
+    def test_district_seven_has_a_real_published_inbox(self):
+        """`ga-dot-d7` shipped with an endpoint and no address, so every Atlanta
+        case produced the empty-recipient draft above. GDOT publishes
+        contact@dot.ga.gov beside *511 in the District 7 brochure."""
+        from road_cleaner.config import SEEDS_DIR
+        from road_cleaner.jurisdiction.registry import JurisdictionRegistry
+
+        registry = JurisdictionRegistry.load(SEEDS_DIR / "agencies.yaml")
+        d7 = next(a for a in registry.agencies.values() if a.id == "ga-dot-d7")
+        assert d7.email == "contact@dot.ga.gov"
+        # The form is still the formal route; the address only gives the draft
+        # somewhere to go.
+        assert d7.endpoint == "https://www.dot.ga.gov/Pages/ContactUs.aspx"
+
+    def test_no_agency_is_addressed_to_a_named_person(self):
+        """The D7 brochure also lists staff addresses. An automated filer must
+        not put road debris in an individual's inbox."""
+        from road_cleaner.config import SEEDS_DIR
+        from road_cleaner.jurisdiction.registry import JurisdictionRegistry
+
+        registry = JurisdictionRegistry.load(SEEDS_DIR / "agencies.yaml")
+        named = {"juhatch", "springle", "chkent", "laperry", "cdegrace", "pdenard"}
+        for agency in registry.agencies.values():
+            if not agency.email:
+                continue
+            local = agency.email.split("@", 1)[0].lower()
+            assert local not in named, f"{agency.id} is addressed to a person"
 
 
 class TestTheMapPicker:

@@ -74,6 +74,35 @@ class MissingDependencyError(RuntimeError):
     """A cloud adapter was selected but its library isn't installed."""
 
 
+def _require_place_data() -> None:
+    """Fail at boot if the place lookup's data files did not ship.
+
+    They are read lazily, deep inside `locate()`, so their absence used to
+    surface as an unhandled FileNotFoundError the first time somebody dropped a
+    pin -- a bare `HTTP 500` under the map with nothing in it to debug, on a
+    deployed image only. An anchorless `data/` in .gcloudignore had matched
+    src/road_cleaner/adapters/geo/data and quietly left both files out of the
+    build context.
+
+    The ignore file is fixed, but the class of mistake is not: these are the
+    only runtime assets that live under a directory name the ignore files
+    exclude. Checking here turns a silent mid-session 500 into a container that
+    refuses to start, which Cloud Run puts in the log where it can be read.
+    """
+    from road_cleaner.adapters.geo.places import PLACES_FILE, STATES_FILE
+
+    missing = [p for p in (STATES_FILE, PLACES_FILE) if not p.is_file()]
+    if missing:
+        raise MissingDependencyError(
+            "The place lookup's data files are missing:\n"
+            + "\n".join(f"    {p}" for p in missing)
+            + "\n\nWithout them no coordinate can be named, so dropping a pin fails."
+            "\nIf this is a built image, check that .gcloudignore and .dockerignore"
+            "\nstill anchor their `data/` rule as `/data/` -- an unanchored one"
+            "\nexcludes this directory too."
+        )
+
+
 @dataclass
 class Container:
     """Every wired dependency, built once and passed to the agents."""
@@ -110,6 +139,7 @@ class Container:
         )
 
     async def startup(self) -> None:
+        _require_place_data()
         await self.repository.initialize()
         await self.bus.start()
         # The agency registry lives in YAML but is mirrored into the store so

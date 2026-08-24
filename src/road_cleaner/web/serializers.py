@@ -331,6 +331,13 @@ def last_analysis(
         )
         analysis = {
             **analysis,
+            # The agency's *name*, for the same reason as its endpoint. The
+            # sidecar records who owned the road when the run happened, and
+            # moving a case re-runs the jurisdiction lookup and rewrites
+            # `case.agency_id` -- so a page reading the cached name showed the
+            # old DOT next to the new DOT's form. Both halves of that came from
+            # this block; only one of them was being refreshed.
+            "agency": detail.agency.name,
             "report_destination": destination,
             "report_channel": channel,
             "report_email": detail.agency.email or None,

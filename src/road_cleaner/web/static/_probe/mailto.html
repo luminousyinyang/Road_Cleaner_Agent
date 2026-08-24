@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mailto probe</title>
+<style>
+  body { font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; max-width: 46rem; margin: 3rem auto; padding: 0 1rem; }
+  li { margin: 0 0 1.1rem; }
+  a { display: inline-block; padding: .35rem .7rem; border: 1px solid currentColor; border-radius: 4px; text-decoration: none; }
+  code { background: #eee; padding: 0 .25rem; }
+  .q { color: #666; font-size: 13px; }
+  @media (prefers-color-scheme: dark) { body { background:#111; color:#eee; } code { background:#222; } .q { color:#999; } }
+</style>
+
+<h1>Which of these opens your mail client?</h1>
+<p>Click each in order. The point is to find where it stops working.
+If <b>#1</b> already does nothing, the problem is your Mac's mailto handler,
+not anything in Road Cleaner.</p>
+
+<ol>
+  <li>
+    <a href="mailto:contact@dot.ga.gov">1. Bare address, nothing else</a>
+    <div class="q"><code>mailto:contact@dot.ga.gov</code></div>
+  </li>
+  <li>
+    <a href="mailto:contact@dot.ga.gov?subject=Test">2. Subject, one word, no spaces</a>
+    <div class="q"><code>mailto:contact@dot.ga.gov?subject=Test</code></div>
+  </li>
+  <li>
+    <a href="mailto:contact@dot.ga.gov?subject=Road%20hazard">3. Subject with an encoded space</a>
+    <div class="q"><code>?subject=Road%20hazard</code> &mdash; your spacing theory</div>
+  </li>
+  <li>
+    <a href="mailto:contact@dot.ga.gov?subject=Road%20hazard&body=Line%20one.%0A%0ALine%20two.">4. Subject + short body with newlines</a>
+    <div class="q"><code>%0A%0A</code> line breaks</div>
+  </li>
+  <li>
+    <a id="real">5. The exact link the case page builds</a>
+    <div class="q">same length and encoding as the real one</div>
+  </li>
+</ol>
+
+<p class="q">Nothing here sends anything. These only ask the operating system to
+open a draft &mdash; the same thing the case page's button does.</p>
+
+<script>
+  // Built the same way inspect.js builds it, so #5 is not an approximation.
+  var email = "contact@dot.ga.gov";
+  var subject = "Road hazard: debris in lane 1 on I-75";
+  var body = [
+    "Reporting a road hazard observed on a public traffic camera.",
+    "",
+    "Location: I-75 northbound at Howell Mill Road, in lane 1.",
+    "Camera: GDOT-CCTV-0312",
+    "First observed: Sun Aug 23, 12:08 PM",
+    "Confirmed present at: 12:09 PM",
+    "",
+    "A large piece of shredded tire tread / roadside debris lies across the",
+    "yellow line, encroaching into the leftmost travel lane under an overpass.",
+    "",
+    "4 timestamped camera frames are attached.",
+    "",
+    "Filed automatically by Road Cleaner. Reply to this thread and a person will see it."
+  ].join("\n");
+
+  document.getElementById("real").href =
+    "mailto:" + encodeURIComponent(email).replace(/%40/g, "@") +
+    "?subject=" + encodeURIComponent(subject) +
+    "&body=" + encodeURIComponent(body);
+</script>

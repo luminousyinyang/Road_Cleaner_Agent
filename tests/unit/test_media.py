@@ -521,6 +521,39 @@ class TestTheCachedAnalysisShownOnTheCasePage:
         assert shown["report_destination"] == "d5@example.invalid"
         assert shown["report_channel"] == "email"
 
+    def test_moving_a_case_renames_the_agency_not_just_its_endpoint(self, tmp_path: Path):
+        """The cached name and the live endpoint must not disagree.
+
+        Dropping a pin in Tennessee re-ran the jurisdiction lookup and pointed
+        the form at TDOT, but the page still read "Georgia DOT — District 7"
+        either side of it: the heading and the button take the agency's name
+        from the sidecar, which records who owned the road at inspect time.
+        One block feeds both, and it was refreshing the endpoint only.
+        """
+        from road_cleaner.config import Settings
+        from road_cleaner.domain.enums import AgencyLevel, Channel, HazardType
+        from road_cleaner.domain.models import Agency, Case, CaseWithDetail
+        from road_cleaner.web.serializers import last_analysis
+
+        self._write(
+            tmp_path, "GA-0003",
+            {"case_id": "GA-0003", "report_body": "x", "agency": "Georgia DOT — District 7"},
+        )
+        detail = CaseWithDetail(
+            case=Case(
+                id="GA-0003", camera_id="c", state="TN", hazard_type=HazardType.DEBRIS,
+                hazard_title="Debris in a travel lane",
+                location="35.85344, -83.93668 — near Rockford, TN",
+            ),
+            agency=Agency(
+                id="tn-dot", name="Tennessee DOT", level=AgencyLevel.STATE_DOT,
+                state="TN", channel=Channel.EMAIL, email="tdot@example.invalid",
+            ),
+        )
+        shown = last_analysis(tmp_path, "GA-0003", detail, Settings(ROAD_CLEANER_MODE="local"))
+        assert shown["agency"] == "Tennessee DOT"
+        assert shown["report_destination"] == "tdot@example.invalid"
+
     def test_a_destination_already_in_the_cache_is_left_alone(self, tmp_path: Path):
         from road_cleaner.web.serializers import last_analysis
 

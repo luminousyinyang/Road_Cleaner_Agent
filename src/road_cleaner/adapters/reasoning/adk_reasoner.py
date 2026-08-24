@@ -205,7 +205,12 @@ class AdkReasoner:
         if not candidates:
             return None
 
-        self._build()
+        # Inside the try below, not before it. `_build` raises a bare
+        # RuntimeError when google-adk is absent or GOOGLE_CLOUD_PROJECT is
+        # unset, and nothing between here and the route catches it -- so a
+        # machine without the cloud extras answered /api/where with a naked
+        # HTTP 500 and the map just said "HTTP 500". An unbuildable reasoner is
+        # an unusable answer like any other: fall back to the registry rules.
         listing = "\n".join(
             f"- id: {a.id}\n  name: {a.name}\n  level: {a.level.value}\n"
             f"  note: {a.jurisdiction_note or '—'}"
@@ -227,6 +232,7 @@ class AdkReasoner:
         )
 
         try:
+            self._build()
             raw = await self._ask(self._agents["jurisdiction"], prompt)
             payload = json.loads(raw)
             answer = JurisdictionAnswer(**payload)
@@ -252,8 +258,11 @@ class AdkReasoner:
         style and nothing else. A returned value that looks like the model
         ignored the brief is discarded.
         """
-        self._build()
         try:
+            # Inside the try for the same reason as `resolve_jurisdiction`: a
+            # missing google-adk raised straight past the fallback this
+            # docstring promises, turning a cosmetic step into a hard failure.
+            self._build()
             improved = await self._ask(self._agents["report"], f"Draft report:\n\n{draft}")
         except Exception as exc:  # noqa: BLE001
             log.warning("Report agent failed; sending the draft", extra={"error": str(exc)})
