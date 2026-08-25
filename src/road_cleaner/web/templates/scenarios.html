@@ -34,7 +34,17 @@
   </div>
 </section>
 
-{# --- the library --- #}
+{# --- the library, split by how far the automation is allowed to go ---
+
+   Same cases, same clips, two different endings. The first section runs the
+   pipeline and puts the finished report in your inbox without asking. The
+   second stops at naming the agency and hands you the report to send yourself,
+   which is what the majority of DOTs actually require -- most publish a web
+   form, not an address, and no amount of automation makes a form fill itself.
+
+   `split_by_mode` decides which case lands where, and why. #}
+{% from "partials/case_card.html" import case_card %}
+
 <section class="library" id="library">
   <div class="wrap">
     <p class="library__eyebrow">And one thing more · scenario library</p>
@@ -43,7 +53,7 @@
         <h2>Every hazard it found, re-staged</h2>
         <p class="library__lede">
           A confirmed hazard is also a rare event, and rare events are exactly what a
-          self-driving stack never gets enough of. So every case above is re-staged here as
+          self-driving stack never gets enough of. So every case is re-staged here as
           dashcam footage. Each clip is seeded from one real detection — gated on more than
           one look, filed with the agency that owns the road — which means every scenario
           traces back to something that happened, and not one frame of it was filmed.
@@ -60,65 +70,47 @@
       {% endfor %}
     </nav>
 
-    <div class="cards">
-      {% for c in cards %}
-      <article class="card card--{{ c.state }}" data-case="{{ c.id }}"
-               data-hazard="{{ c.hazard_key }}">
+    {# --- 1. the whole way --- #}
+    <div class="mode" id="auto">
+      <div class="mode__head">
+        <h3 class="mode__title">Full automation</h3>
+        <p class="mode__lede">
+          Press it and nothing else happens by hand. It samples the clip, looks
+          twice, decides whether the hazard clears the gate, works out which of
+          seventy-two agencies owns that stretch, writes the report and sends
+          it. The mail lands in <strong>your</strong> inbox, because the road in
+          the clip is generated and no maintenance desk should get post about
+          it.
+        </p>
+      </div>
+      {% if automatic %}
+      <div class="cards">
+        {% for c in automatic %}{{ case_card(c, 'auto', gen_enabled) }}{% endfor %}
+      </div>
+      {% else %}
+      <p class="mode__empty">No cases in this filter.</p>
+      {% endif %}
+    </div>
 
-        {% if c.state == 'refused' %}
-          <p class="card__refused">Refused by policy</p>
-          <h3>{{ c.title }}</h3>
-          <p class="card__body">
-            Hazards involving a person are never simulated, so there is no clip here and no
-            button to make one. The case is still detected, filed and tracked like any other.
-          </p>
-          <footer class="card__foot">
-            <code>422 · {{ c.hazard_key }}</code>
-            <a href="{{ c.case_url }}">see the case →</a>
-          </footer>
-
-        {% elif c.state == 'clip' %}
-          <div class="card__media">
-            <span class="chip-syn">{{ c.clip.badge_short }}</span>
-            <video controls preload="metadata" playsinline
-                   src="{{ c.clip.url }}#t=0.5"></video>
-          </div>
-          <h3>{{ c.title }}</h3>
-          <p class="card__meta">{{ c.meta }}</p>
-          <footer class="card__foot">
-            <code>from {{ c.id }}</code>
-            <a href="{{ c.case_url }}">see the case →</a>
-          </footer>
-
-        {% else %}
-          <div class="card__media card__media--empty">
-            <span class="card__placeholder">NO CLIP YET</span>
-          </div>
-          <h3>{{ c.title }}</h3>
-          <p class="card__meta">{{ c.meta }}</p>
-          <div class="gen" data-case="{{ c.id }}">
-            <button class="btn btn--syn gen-run" {{ 'disabled' if not gen_enabled }}>
-              Generate dashcam clip
-            </button>
-            <p class="gen__cost">
-              {%- if gen_enabled -%}
-                Calls Veo · bills per second of video · ~2 min
-              {%- else -%}
-                Set MEDIA_PROVIDER=vertex to enable
-              {%- endif -%}
-            </p>
-            <div class="gen__progress" hidden>
-              <div class="gen__bar"><span></span></div>
-              <p class="gen__status"></p>
-            </div>
-          </div>
-          <footer class="card__foot">
-            <code>from {{ c.id }}</code>
-            <a href="{{ c.case_url }}">see the case →</a>
-          </footer>
-        {% endif %}
-      </article>
-      {% endfor %}
+    {# --- 2. as far as it can go on its own --- #}
+    <div class="mode" id="assisted">
+      <div class="mode__head">
+        <h3 class="mode__title">DOT contact — you send it</h3>
+        <p class="mode__lede">
+          The same work, stopping one step earlier. It names the agency, gives
+          you the inbox or the form they actually accept, and hands over the
+          finished report to send in your own name. This is the honest ending
+          for most of the country: fifty-nine of the seventy-two agencies on
+          file publish a web form and no address at all.
+        </p>
+      </div>
+      {% if assisted %}
+      <div class="cards">
+        {% for c in assisted %}{{ case_card(c, 'assisted', gen_enabled) }}{% endfor %}
+      </div>
+      {% else %}
+      <p class="mode__empty">No cases in this filter.</p>
+      {% endif %}
     </div>
   </div>
 </section>
@@ -144,8 +136,51 @@
     </div>
   </div>
 </footer>
+
+{# --- the two dialogs ---
+
+   Rendered once at page level rather than per card. Eleven copies of the same
+   markup, ten of them permanently hidden, is eleven chances for the wrong one
+   to open. #}
+
+{# The handover. Everything a person needs to file this themselves. #}
+<dialog class="modal" id="hand-modal">
+  <div class="modal__box">
+    <p class="modal__eyebrow" id="hand-case"></p>
+    <h2 class="modal__title" id="hand-agency">The agency</h2>
+    <p class="modal__lede" id="hand-how"></p>
+
+    <dl class="hand__facts">
+      <dt>Where</dt><dd id="hand-where"></dd>
+      <dt>Takes reports at</dt><dd id="hand-dest"></dd>
+      <dt>Because</dt><dd id="hand-rule"></dd>
+    </dl>
+
+    <p class="hand__subject" id="hand-subject"></p>
+    <pre class="hand__body" id="hand-body"></pre>
+
+    {# Nothing is transmitted from here — the button opens a draft or the
+       agency's own form and stops. That matters more than usual because a
+       handful of the addresses in `seeds/agencies.yaml` are the agency's real
+       published inbox rather than an `example.invalid` placeholder, and this
+       case is about a clip that was generated. #}
+    <p class="hand__caveat">
+      Nothing is sent from this page. The button opens a draft, or the agency's
+      own form, for you to send by hand — and some of these are a real published
+      inbox, so read the address before you do. This hazard was staged from a
+      generated clip.
+    </p>
+
+    <div class="modal__actions">
+      <button class="btn" type="button" data-modal-close>Close</button>
+      <button class="btn" type="button" id="hand-copy">Copy the report</button>
+      <a class="btn btn--primary" id="hand-open" target="_blank" rel="noopener">Open it</a>
+    </div>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/simulate.js?v={{ v }}" defer></script>
+<script src="/static/js/library.js?v={{ v }}" defer></script>
 {% endblock %}

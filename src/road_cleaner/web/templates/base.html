@@ -17,21 +17,64 @@
   {% block head %}{% endblock %}
 </head>
 <body>
+{# The public Firebase web config, or `null` when accounts are not configured.
+   None of it is secret -- the API key identifies the project to Firebase and
+   authorises nothing; what protects an account is the ID token, which is signed
+   by Google and verified server-side. See `Settings.firebase_web_config`. #}
+<script type="application/json" id="firebase-config">{{ firebase_config }}</script>
+<script type="module" src="/static/js/auth.js?v={{ v }}"></script>
 {% block nav %}
 <div class="wrap">
   <nav class="nav">
     <a class="nav__mark" href="/">Road Cleaner</a>
     <div class="nav__links">
       <a href="/" class="{{ 'is-active' if active == 'scenarios' }}">Road log</a>
-      <a href="/#drill">Live drill</a>
-      <a href="/#library">Scenarios</a>
+      <a href="/#auto">Full automation</a>
+      <a href="/#assisted">DOT contact</a>
       <a href="/dashcam" class="{{ 'is-active' if active == 'dashcam' }}">Dashcam</a>
+      {# Revealed by auth.js once somebody is signed in. Rendered rather than
+         injected so it keeps its place in the source order either way. #}
+      <a href="/incidents" class="{{ 'is-active' if active == 'incidents' }}"
+         data-auth-only hidden>My incidents</a>
       <a href="/about" class="{{ 'is-active' if active == 'about' }}">How it works</a>
     </div>
     <span class="nav__status"><span class="dot"></span>watching now</span>
+    {# Both states are rendered and auth.js hides one. A sign-in button that
+       appears a beat after the page does reads as a glitch. #}
+    <span class="nav__auth" data-auth-control hidden>
+      <button class="nav__signin" data-auth-signin type="button" hidden>Sign in</button>
+      <span class="nav__who" data-auth-who hidden>
+        <span data-auth-email></span>
+        <button class="nav__signout" data-auth-signout type="button">Sign out</button>
+      </span>
+    </span>
   </nav>
 </div>
 {% endblock %}
+
+{# Shown when somebody presses a full-automation button without an account. The
+   run has to mail its result somewhere, and there is nowhere to mail it. #}
+<dialog class="modal" id="signin-modal">
+  <form method="dialog" class="modal__box">
+    <h2 class="modal__title">Sign in to run this one.</h2>
+    <p class="modal__lede">
+      Full automation finishes by sending the report — and it sends it to you,
+      not to the agency, because the road in this clip was generated. So it
+      needs an inbox of yours to send to.
+    </p>
+    <p class="modal__lede modal__lede--quiet">
+      Nothing stops you watching the pipeline itself: the
+      <a href="/#assisted">DOT contact</a> cases run the same detection and the
+      same jurisdiction lookup, and hand you the report at the end instead.
+    </p>
+    <div class="modal__actions">
+      <button class="btn" value="cancel">Not now</button>
+      <button class="btn btn--primary" type="button" data-modal-signin>
+        Sign in with Google
+      </button>
+    </div>
+  </form>
+</dialog>
 
 {% block content %}{% endblock %}
 

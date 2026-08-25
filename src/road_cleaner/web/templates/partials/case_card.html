@@ -1,0 +1,94 @@
+{# One library card, in one of the two modes.
+
+   `mode` is "auto" or "assisted" and changes only the action at the bottom --
+   the media, the title and the provenance line are the same case either way,
+   because they are the same case. A card whose picture changed with the mode
+   would suggest the two modes see different evidence, and they do not.
+
+   Expects: c (a scenario card), mode, gen_enabled. #}
+
+{% macro case_card(c, mode, gen_enabled) %}
+<article class="card card--{{ c.state }}" data-case="{{ c.id }}"
+         data-hazard="{{ c.hazard_key }}" data-mode="{{ mode }}">
+
+  {% if c.state == 'refused' %}
+    <p class="card__refused">Refused by policy</p>
+    <h3>{{ c.title }}</h3>
+    <p class="card__body">
+      Hazards involving a person are never simulated, so there is no clip here and no
+      button to make one. The case is still detected, filed and tracked like any other.
+    </p>
+    <footer class="card__foot">
+      <code>422 · {{ c.hazard_key }}</code>
+      <a href="{{ c.case_url }}">see the case →</a>
+    </footer>
+
+  {% elif c.state == 'clip' %}
+    <div class="card__media">
+      <span class="chip-syn">{{ c.clip.badge_short }}</span>
+      <video controls preload="metadata" playsinline
+             src="{{ c.clip.url }}#t=0.5"></video>
+    </div>
+    <h3>{{ c.title }}</h3>
+    <p class="card__meta">{{ c.meta }}</p>
+
+    {% if mode == 'auto' %}
+      {# Runs the real pipeline over this clip and mails the result to whoever
+         is signed in. Costs Vertex calls per press, so the label says so before
+         it is pressed rather than after. #}
+      <div class="act act--auto" data-run="{{ c.id }}">
+        <button class="btn btn--syn run-go" type="button">Run it and email me</button>
+        <p class="act__cost">Two vision calls · about a minute</p>
+        <ol class="act__stages" hidden>
+          {% for key, label in auto_stages %}
+          <li class="stage" data-stage="{{ key }}">
+            <span class="stage__dot"></span>
+            <span class="stage__label">{{ label }}</span>
+            <span class="stage__detail"></span>
+          </li>
+          {% endfor %}
+        </ol>
+        <p class="act__outcome" hidden></p>
+      </div>
+    {% else %}
+      <div class="act act--hand" data-hand="{{ c.id }}">
+        <button class="btn hand-go" type="button">Show me who to tell</button>
+        <p class="act__cost">No model calls · the report is already written</p>
+        <p class="act__outcome" hidden></p>
+      </div>
+    {% endif %}
+
+    <footer class="card__foot">
+      <code>from {{ c.id }}</code>
+      <a href="{{ c.case_url }}">see the case →</a>
+    </footer>
+
+  {% else %}
+    <div class="card__media card__media--empty">
+      <span class="card__placeholder">NO CLIP YET</span>
+    </div>
+    <h3>{{ c.title }}</h3>
+    <p class="card__meta">{{ c.meta }}</p>
+    <div class="gen" data-case="{{ c.id }}">
+      <button class="btn btn--syn gen-run" {{ 'disabled' if not gen_enabled }}>
+        Generate dashcam clip
+      </button>
+      <p class="gen__cost">
+        {%- if gen_enabled -%}
+          Calls Veo · bills per second of video · ~2 min
+        {%- else -%}
+          Set MEDIA_PROVIDER=vertex to enable
+        {%- endif -%}
+      </p>
+      <div class="gen__progress" hidden>
+        <div class="gen__bar"><span></span></div>
+        <p class="gen__status"></p>
+      </div>
+    </div>
+    <footer class="card__foot">
+      <code>from {{ c.id }}</code>
+      <a href="{{ c.case_url }}">see the case →</a>
+    </footer>
+  {% endif %}
+</article>
+{% endmacro %}

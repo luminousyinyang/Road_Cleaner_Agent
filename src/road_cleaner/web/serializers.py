@@ -7,6 +7,7 @@ changing how a case looks never means touching a model or migrating a table.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -20,7 +21,7 @@ from road_cleaner.domain.enums import (
     CaseKind,
     Tone,
 )
-from road_cleaner.domain.models import Case, CaseWithDetail, Detection, FrameRef
+from road_cleaner.domain.models import Case, CaseWithDetail, Detection, FrameRef, Incident
 from road_cleaner.domain.sla import elapsed_fraction, format_remaining, rationale_for
 from road_cleaner.ports.media import SYNTHETIC_PREFIX
 
@@ -223,6 +224,45 @@ def scenario_card(
         "clip": videos[0] if videos else None,
         "frame_url": frame_url(evidence_frame(case)),
     }
+
+
+def mode_for(case_id: str) -> str:
+    """Which of the two endings this case demonstrates: 'auto' or 'assisted'.
+
+    The division is presentational, and deliberately so. Every case in the
+    library has a clip, which means every one of them *could* be run either way
+    -- the two modes differ in who ends up holding the report, not in what the
+    pipeline is capable of. Two sections exist so both answers are visible at
+    once rather than hidden behind a toggle somebody has to find.
+
+    The tempting alternative was to split on something real: agencies that
+    publish an inbox can be written to automatically, agencies that publish only
+    a web form cannot. That is the honest distinction and it is why the second
+    mode exists at all -- but in the seeded data it lands 1 case against 10,
+    which shows a visitor one example of the interesting half and ten of the
+    other.
+
+    Derived from the case id rather than from a position in a list, because two
+    different pages have to agree about it. Index parity over the *filtered*
+    library reshuffled the whole split every time somebody clicked a hazard
+    chip, and left the case page with no way to work out which ending its own
+    case belonged to.
+
+    `sha256` rather than `hash()`, which is salted per process: the same case
+    would land in a different section after a restart, and on Cloud Run after
+    every deploy.
+    """
+    digest = hashlib.sha256(case_id.encode()).digest()
+    return "auto" if digest[0] % 2 == 0 else "assisted"
+
+
+def split_by_mode(
+    cards: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The library, divided into the two sections. See `mode_for`."""
+    automatic = [c for c in cards if mode_for(c["id"]) == "auto"]
+    assisted = [c for c in cards if mode_for(c["id"]) == "assisted"]
+    return automatic, assisted
 
 
 def scenario_filters(cards: list[dict[str, Any]], active: str) -> list[dict[str, Any]]:
@@ -674,3 +714,55 @@ def stat_band(stats: dict[str, Any]) -> list[dict[str, str]]:
 
 def state_label(code: str) -> str:
     return STATE_LABELS.get(code, code)
+
+
+# ------------------------------------------------------------------- incidents
+
+
+def incident_row(incident: Incident) -> dict[str, Any]:
+    """One saved dashcam finding, as the incidents page renders it.
+
+    The image is addressed by route rather than by blob key. The key is a
+    storage detail that changes when a deployment moves between local disk and
+    GCS, and it is also the one string that must not be client-controllable --
+    `/api/incidents/{id}/image` resolves it server-side from a record fetched
+    under the caller's own uid.
+    """
+    hazard_key = incident.hazard_type.value
+    return {
+        "id": incident.id,
+        "hazard": HAZARD_LABELS.get(hazard_key, hazard_key.replace("_", " ").title()),
+        "hazard_key": hazard_key,
+        "severity": incident.severity.value,
+        "confidence": round(incident.confidence, 2),
+        "description": incident.description,
+        "when": when(incident.created_at),
+        "at": incident.created_at.isoformat(),
+        "location": incident.location,
+        "state": incident.state,
+        "lat": incident.lat,
+        "lng": incident.lng,
+        "agency": incident.agency_name,
+        "agency_email": incident.agency_email,
+        "agency_endpoint": incident.agency_endpoint,
+        "channel": CHANNEL_LABELS.get(
+            incident.channel.value if incident.channel else "", ""
+        ),
+        "subject": incident.report_subject,
+        "body": incident.report_body,
+        "image_url": f"/api/incidents/{incident.id}/image" if incident.image_keys else None,
+        "box": incident.box.model_dump() if incident.box else None,
+        "box_measured": incident.box_is_measured,
+        "box_label": incident.hazard_label,
+        "emailed_to": incident.emailed_to,
+        # Three distinguishable states, not two. "Not sent" and "tried and
+        # refused" are different facts, and the second one is the interesting
+        # one -- it usually means DASHCAM_NOTIFY_DOT is on and the address is
+        # not allowlisted, which is a configuration answer, not a bug.
+        "dot_state": (
+            "sent" if incident.dot_notified else ("refused" if incident.dot_error else "held")
+        ),
+        "dot_destination": incident.dot_destination,
+        "dot_error": incident.dot_error,
+        "model": incident.model_name,
+    }

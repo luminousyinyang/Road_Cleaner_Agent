@@ -3,7 +3,9 @@
 
 {% block content %}
 <div class="wrap">
-  <section class="dash" id="dash">
+  <section class="dash" id="dash"
+           data-auth="{{ 'on' if auth_configured else 'off' }}"
+           data-report-window="{{ report_window }}">
     <div class="dash__intro">
       <h1 class="dash__title">Point it at a road.</h1>
       <p class="dash__lede">
@@ -21,6 +23,24 @@
       {% endif %}
     </div>
 
+    {# Shown by auth.js when accounts are configured and nobody is signed in.
+       Rendered hidden and revealed rather than the other way round: the first
+       auth state takes a moment to arrive, and flashing a sign-in panel at
+       somebody who is already signed in reads as a bug. #}
+    {% if auth_configured %}
+    <div class="dash__gate" id="dash-gate" hidden>
+      <p class="dash__gate-lead">Sign in to report what it finds.</p>
+      <p class="dash__gate-note">
+        A report is emailed to you, with the marked-up still attached, and kept
+        on your incidents page. So it needs an inbox to go to. Signing in is
+        Google, and takes one tap.
+      </p>
+      <button class="btn btn--primary" type="button" data-gate-signin>
+        Sign in with Google
+      </button>
+    </div>
+    {% endif %}
+
     <div class="dash__stage">
       <div class="dash__frame restage__frame" id="dash-frame">
         <video id="dash-video" playsinline autoplay muted></video>
@@ -30,10 +50,17 @@
 
       <div class="dash__bar">
         <button class="btn dash__go" id="dash-toggle">Start looking</button>
-        {# Appears only once something has been found. A report button with
+        {# Appears only once something has been found, and counts down: a find
+           is held for a fixed window and then dropped. A report button with
            nothing to report is a button that teaches you to ignore it. #}
         <button class="btn btn--primary dash__go" id="dash-report" hidden>
           Report it
+        </button>
+        {# The old share-sheet path, kept as the secondary action. Reporting
+           saves and mails; this hands the picture to the phone and stores
+           nothing. #}
+        <button class="btn dash__share" id="dash-share" hidden>
+          Share it yourself
         </button>
         <span class="dash__status" id="dash-status">Ready.</span>
         <span class="dash__count" id="dash-count" hidden></span>
@@ -47,14 +74,21 @@
     <p class="dash__note">
       One look every few seconds, each one a call to <code>{{ model }}</code>.
       Vertex throttles at roughly twenty to thirty, so this is a short demo and the
-      counter tells you where you are.
+      counter tells you where you are. When it finds something it stops looking —
+      a hazard is one object, and more calls on it buy nothing.
     </p>
     <p class="dash__note">
-      <strong>Nothing is stored.</strong> Frames go to the model and are dropped —
-      no case is opened and nothing is written to a database. <em>Report it</em>
-      draws the box into the picture and hands that, plus the finished report and
-      your coordinates, to your phone&rsquo;s share sheet. Sending it stays your
-      decision, and your hand.
+      <strong>Only what you report is kept.</strong> Every frame goes to the model
+      and is dropped. A find is held for {{ report_window }} seconds and then
+      discarded too — if you do not press the button, nothing is uploaded, nothing
+      is written down, and no mail is sent.
+    </p>
+    <p class="dash__note">
+      Press it and one thing is kept: that frame, with the box drawn into it,
+      stored against your account and emailed to you with the finished report.
+      It works out which agency owns that stretch and the mail says so — but it
+      does not write to them. Forwarding it stays your decision, and your hand.
+      <em>Share it yourself</em> is the old path, and still stores nothing.
     </p>
   </section>
 </div>

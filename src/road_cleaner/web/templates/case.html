@@ -122,6 +122,30 @@
           <p class="section-label">The report it wrote</p>
           <p class="run__subject" id="run-subject">{{ analysis.report_subject if analysis else "" }}</p>
           <pre id="run-body">{{ analysis.report_body if analysis else "" }}</pre>
+          {# The ending, and which one it is comes from `mode_for` -- the same
+             function the library uses to decide which section this case sits
+             in. A card that promised to email you must not land on a page whose
+             only button hands you a draft to send by hand. #}
+          {% if mode == 'auto' %}
+          <div class="run__send act act--auto" data-run="{{ d.id }}">
+            <button class="btn btn--primary run-go" type="button">Run it and email me</button>
+            <p class="act__cost">
+              Runs the whole pipeline again and sends the report to your inbox —
+              not to {{ analysis.agency if analysis and analysis.agency else "the agency" }},
+              because this road was generated.
+            </p>
+            <ol class="act__stages" hidden>
+              {% for key, label in stages %}
+              <li class="stage" data-stage="{{ key }}">
+                <span class="stage__dot"></span>
+                <span class="stage__label">{{ label }}</span>
+                <span class="stage__detail"></span>
+              </li>
+              {% endfor %}
+            </ol>
+            <p class="act__outcome" hidden></p>
+          </div>
+          {% else %}
           <div class="run__send">
             <button class="btn btn--primary" id="run-send"
                     data-agency="{{ analysis.agency if analysis else '' }}">
@@ -155,7 +179,16 @@
               <span class="handover__copied" id="run-copied" hidden></span>
             </div>
           </div>
+          {% endif %}
 
+          {% if mode == 'auto' %}
+          <p class="run__caveat">
+            The send is real and it goes to you. The agency named above is the
+            one a real detection here would have been filed with — it is
+            resolved by the same rules and written into the report — but nothing
+            is transmitted to them from this page.
+          </p>
+          {% else %}
           <p class="run__caveat">
             Nothing is transmitted from this page — <code>DRY_RUN</code> is on,
             and the link only ever opens a draft or the agency's own form for
@@ -164,6 +197,7 @@
             placeholders, but a few are the agency's real published inbox, so
             check the To: line before you press send.
           </p>
+          {% endif %}
         </div>
 
         <p class="run__error" id="run-error" hidden></p>
@@ -229,4 +263,7 @@
 <script src="/static/js/map.js?v={{ v }}" defer></script>
 <script src="/static/js/case.js?v={{ v }}" defer></script>
 <script src="/static/js/inspect.js?v={{ v }}" defer></script>
+{# Drives the "Run it and email me" ending and the sign-in dialog behind it.
+   Loaded on both endings: it wires nothing when the markup is not there. #}
+<script src="/static/js/library.js?v={{ v }}" defer></script>
 {% endblock %}

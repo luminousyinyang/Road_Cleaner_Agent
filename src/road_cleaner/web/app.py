@@ -11,10 +11,12 @@ than faking it.
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -28,17 +30,19 @@ from road_cleaner.agents.auditor import Auditor
 from road_cleaner.agents.dispatcher import Dispatcher
 from road_cleaner.config import MediaProviderKind, Settings, get_settings
 from road_cleaner.container import build_container
+from road_cleaner.domain.enums import CHANNEL_LABELS
 from road_cleaner.domain.models import Camera, Frame
 from road_cleaner.logging import configure_logging, get_logger
 from road_cleaner.pipeline.demo_send import SEND_STAGE as DEMO_SEND_STAGE
+from road_cleaner.pipeline.drill import STAGES as DRILL_STAGES
 from road_cleaner.pipeline.inspect import STAGES as INSPECT_STAGES
 from road_cleaner.pipeline.inspect import STAGES_NO_SEND as INSPECT_STAGES_NO_SEND
 from road_cleaner.pipeline.inspect import Inspector
-from road_cleaner.pipeline.drill import STAGES as DRILL_STAGES
 from road_cleaner.ports.blob_store import BlobNotFoundError
 from road_cleaner.ports.media import is_synthetic_key
 from road_cleaner.ports.vision import VisionUnavailableError
 from road_cleaner.web import serializers as S
+from road_cleaner.web.auth import AuthUser, current_user, require_mailable_user, require_user
 from road_cleaner.web.jobs import DemoSendJobs, DrillJobs, InspectJobs, RenderJobs
 from road_cleaner.web.serializers import when
 
@@ -86,6 +90,41 @@ def asset_version() -> str:
 
 
 TEMPLATES.env.globals["v"] = _AssetVersion()
+
+
+class _FirebaseConfig:
+    """Renders to the public Firebase web config as JSON, or `null`.
+
+    A global rather than a key added to every route's context dict: `base.html`
+    needs it on all six pages, and threading it through each `TemplateResponse`
+    is six chances to forget one and ship a page where sign-in silently does not
+    initialise.
+
+    Resolved per render rather than captured at import, so a settings change does
+    not need a process restart to show up. Nothing secret passes through here --
+    see the note on `Settings.firebase_web_config`.
+    """
+
+    def __html__(self) -> str:
+        """Emitted verbatim, not HTML-escaped.
+
+        `__html__` rather than `__str__` because Jinja autoescaping turns every
+        quote in the JSON into `&#34;`, and a browser does *not* decode entities
+        inside a `<script>` element -- `textContent` hands back the literal
+        `&#34;`, `JSON.parse` throws, the config reads as null, and sign-in
+        silently never initialises. Nothing on the page looks wrong; the button
+        just does nothing.
+
+        Escaping `<` instead is what keeps that safe: it is the only character
+        that can end the script element early, so a value containing
+        `</script>` cannot break out of it. These values come from the
+        deployment's own environment rather than from a request, but a template
+        that is only safe while nobody misconfigures it is not safe.
+        """
+        return json.dumps(get_settings().firebase_web_config or None).replace("<", "\\u003c")
+
+
+TEMPLATES.env.globals["firebase_config"] = _FirebaseConfig()
 
 # A phone frame scaled to ~960px and JPEG-encoded lands around 100-200KB. The
 # ceiling is generous enough for a full-resolution capture from a careless client
@@ -192,6 +231,139 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
+def _your_copy(composed: ComposedDashcamReport, agency) -> str:
+    """The report, with a note about what was and was not done with it.
+
+    The body itself is the same text an agency would receive -- forwarding it
+    should work, and it will not if the copy is a different document. The note
+    goes on top, because somebody opening this in their inbox needs to know
+    immediately whether the DOT already has it or whether that is still their
+    job.
+    """
+    where = agency.email or agency.endpoint
+    if where:
+        onward = (
+            f"This has not been sent to {agency.name}. They take reports at "
+            f"{where} -- forwarding the text below is enough."
+        )
+    else:
+        onward = (
+            f"{agency.name} owns that stretch, but publishes no reporting "
+            "address on file here."
+        )
+    return (
+        f"You reported this through Road Cleaner.\n\n{onward}\n\n"
+        f"{'-' * 60}\n\n{composed.body}"
+    )
+
+
+@dataclass(frozen=True)
+class ComposedDashcamReport:
+    """A dashcam finding, located, attributed to an agency, and written up.
+
+    The pure half of reporting one. Nothing here has sent or stored anything,
+    which is what lets the share-sheet route and the save-and-email route share
+    it: whether a report leaves the building is decided by the caller, and the
+    words are identical either way.
+    """
+
+    place: object
+    detection: object
+    agency: object
+    rule_id: str
+    rationale: str
+    subject: str
+    body: str
+
+
+async def _compose_dashcam_report(c, body: dict) -> ComposedDashcamReport:
+    """Locate a dashcam finding, work out whose road it is, and write the report.
+
+    Raises HTTPException with an explanation for the three ways this legitimately
+    cannot be done: no coordinates, a coordinate outside the place data, and a
+    state with no agency on file.
+    """
+    from road_cleaner.adapters.geo.places import OutsideCoverageError, locate
+    from road_cleaner.domain import narrative
+    from road_cleaner.domain.enums import HazardType, Severity
+    from road_cleaner.domain.models import Detection
+
+    try:
+        lat, lng = float(body["lat"]), float(body["lng"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A report needs coordinates. Without them a crew has nowhere "
+                "to go, and there is no way to tell whose road this is."
+            ),
+        ) from None
+
+    try:
+        place = locate(lat, lng)
+    except OutsideCoverageError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
+        hazard = HazardType(body.get("hazard", "debris"))
+    except ValueError:
+        hazard = HazardType.DEBRIS
+
+    try:
+        severity = Severity(body.get("severity", "medium"))
+    except ValueError:
+        severity = Severity.MEDIUM
+
+    detection = Detection(
+        camera_id="DASHCAM",
+        frame_id="",
+        hazard_type=hazard,
+        lane_position="unknown",
+        severity=severity,
+        confidence=float(body.get("confidence", 0.0)),
+        description=str(body.get("description", "")).strip(),
+        model_name=str(body.get("model", "unknown")),
+    )
+
+    # A phone has no camera registration, so it has no owner agency -- which is
+    # exactly what the `state-dot-fallback` rule exists for.
+    camera = Camera(
+        id="DASHCAM",
+        state=place.state,
+        name=place.nearest or place.state_name,
+        road="an unnamed road",
+        lat=lat,
+        lng=lng,
+        snapshot_url="dashcam://live",
+        owner_agency_id=None,
+    )
+    verdict = await c.jurisdiction.resolve(camera, detection, c.reasoner)
+    if not verdict.resolved:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"No agency on file for {place.state_name}. Holding rather "
+                "than sending this to the wrong desk."
+            ),
+        )
+
+    return ComposedDashcamReport(
+        place=place,
+        detection=detection,
+        agency=verdict.agency,
+        rule_id=verdict.rule_id,
+        rationale=verdict.rationale,
+        subject=narrative.report_subject(detection, place.short, tier=1),
+        body=narrative.report_body(
+            detection,
+            place.label,
+            narrative.observed_at(c.clock.now()),
+            attachment_count=1,
+            tier=1,
+        ),
+    )
+
+
 def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table reads better here
     # ------------------------------------------------------------- pages
     @app.get("/", response_class=HTMLResponse)
@@ -222,6 +394,7 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         visible = cards if hazard == "all" else [x for x in cards if x["hazard_key"] == hazard]
         # The pairing at the top needs a case that actually has a clip.
         featured = next((x for x in cards if x["state"] == "clip"), None)
+        automatic, assisted = S.split_by_mode(visible)
 
         return TEMPLATES.TemplateResponse(
             request,
@@ -229,9 +402,12 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
             {
                 "active": "scenarios",
                 "cards": visible,
+                "automatic": automatic,
+                "assisted": assisted,
                 "filters": filters,
                 "summary": S.library_summary(cards),
                 "featured": featured,
+                "auth_configured": c.settings.auth_configured,
                 "stats": S.stat_band(await c.repository.stats(c.clock.now())),
                 "veo_model": c.settings.veo_model,
                 "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
@@ -239,6 +415,10 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 # The drill's six plus the one it never takes.
                 "demo_stages": [*DRILL_STAGES, DEMO_SEND_STAGE],
                 "examples": DRILL_EXAMPLES,
+                # What a full-automation card counts through. Always the sending
+                # list: the button is only offered to somebody signed in, and a
+                # signed-in run always has an inbox to finish at.
+                "auto_stages": INSPECT_STAGES,
             },
         )
 
@@ -275,6 +455,13 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 # page says that rather than pointing at a library card that is
                 # deliberately not there.
                 "unsimulatable": detail.case.hazard_type.value in UNSIMULATABLE,
+                # Which of the library's two endings this case demonstrates, so
+                # the page finishes the way the card that linked here promised.
+                # Landing on "Send to the agency / Open a draft" after pressing
+                # a card that said it would email you is the page contradicting
+                # itself.
+                "mode": S.mode_for(case_id),
+                "auth_configured": c.settings.auth_configured,
                 "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
                 # Six stages where a run can transmit, five where it cannot.
                 # Built from the pipeline's own list rather than restated here,
@@ -291,6 +478,22 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
     async def about(request: Request):
         return TEMPLATES.TemplateResponse(request, "about.html", {"active": "about"})
 
+    @app.get("/incidents", response_class=HTMLResponse)
+    async def incidents_page(request: Request):
+        """What you have reported. Filled in by the browser, not by this route.
+
+        The page is public and empty; `GET /api/incidents` is what needs the
+        token, and that is where the enforcement is. A server-side redirect for
+        signed-out visitors is not possible here anyway -- the ID token lives in
+        JavaScript and the browser does not send it with a document request.
+        """
+        c = request.app.state.container
+        return TEMPLATES.TemplateResponse(
+            request,
+            "incidents.html",
+            {"active": "incidents", "auth_configured": c.settings.auth_configured},
+        )
+
     # ----------------------------------------------------------- dashcam
     @app.get("/dashcam", response_class=HTMLResponse)
     async def dashcam(request: Request):
@@ -305,6 +508,12 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 # that is the scripted analyzer and it will find nothing.
                 "model": getattr(c.vision, "model_name", type(c.vision).__name__),
                 "scripted": type(c.vision).__name__ == "ScriptedVisionAnalyzer",
+                # Reporting needs an account, because a report is mailed to the
+                # person who made it. With Firebase unconfigured there is nobody
+                # to mail, so the page falls back to the share sheet it had
+                # before accounts existed rather than offering a dead button.
+                "auth_configured": c.settings.auth_configured,
+                "report_window": c.settings.dashcam_report_window_seconds,
             },
         )
 
@@ -677,11 +886,115 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         job = request.app.state.inspections.start(c, case_id)
         return JSONResponse(job.as_dict(), status_code=202)
 
+    @app.post("/api/cases/{case_id}/automate")
+    async def automate_case(
+        request: Request, case_id: str, user: AuthUser = Depends(require_mailable_user)
+    ):
+        """Run the whole pipeline over this case and mail the result to you.
+
+        The same Inspector the case page runs, pointed at a different inbox. It
+        samples the clip, looks at each still, applies the gate, resolves the
+        agency and composes the report -- and then, because a signed-in person
+        asked, sends it to them rather than to the demonstration inbox.
+
+        Costs Vertex quota per press, which is why it is a button and why
+        `InspectJobs` collapses concurrent requests for the same case *and the
+        same recipient* onto one run.
+        """
+        c = request.app.state.container
+        if await c.repository.get_case(case_id) is None:
+            raise HTTPException(status_code=404, detail="No such case")
+        if not c.settings.smtp_host:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "SMTP_HOST is not configured, so this deployment cannot send "
+                    "the report it would write."
+                ),
+            )
+
+        job = request.app.state.inspections.start(c, case_id, verified_recipient=user.mailable)
+        return JSONResponse(job.as_dict(), status_code=202)
+
+    @app.get("/api/cases/{case_id}/handover")
+    async def case_handover(request: Request, case_id: str):
+        """Who to tell about this case, and the report to tell them with.
+
+        The other half of the library: no send, no model calls, no state change.
+        It answers the question a person has when they are going to file it
+        themselves -- which agency, by what route, and what do I paste in.
+
+        Public, because it discloses nothing private: an agency's public
+        reporting address and a report about a generated clip.
+        """
+        from road_cleaner.pipeline.inspect import destination_for
+
+        c = request.app.state.container
+        detail = await c.repository.get_case_detail(case_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="No such case")
+        if detail.agency is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "No agency resolved for this case, so there is nobody to tell. "
+                    "It is held rather than misfiled."
+                ),
+            )
+
+        agency = detail.agency
+        # The report as it stands on the case, rather than a re-run: this route
+        # promises to be free and instant, and re-analysing would be neither.
+        analysis = S.last_analysis(c.settings.media_local_path, case_id, detail, c.settings) or {}
+        subject = analysis.get("report_subject") or detail.case.hazard_title
+        body = analysis.get("report_body") or detail.case.explain or ""
+        destination, channel, _payload = destination_for(
+            detail.case, agency, c.settings, subject=subject, body=body
+        )
+
+        return {
+            "case_id": case_id,
+            "agency": agency.name,
+            "channel": channel,
+            "channel_label": CHANNEL_LABELS.get(channel, channel),
+            "email": agency.email or None,
+            "endpoint": agency.endpoint or None,
+            "destination": destination,
+            "location": detail.case.location,
+            # Why this agency and not one of the other seventy-one. The whole
+            # product is that answer, so the handover shows its working.
+            #
+            # Two sources rejected on the way to this one. `case.explain` is the
+            # *detection* story ("a dark object in lane 1, seen twice") -- a
+            # fine sentence answering a different question. And the cached
+            # analysis carries an `agency_rationale`, which is richer but can
+            # disagree with the case: moving a case re-resolves its agency and
+            # does not rewrite the sidecar, so GA-4462 currently has a
+            # rationale naming Georgia DOT District 7 under an agency that is
+            # City of Atlanta. A reason that names a different desk than the
+            # heading is worse than a short one.
+            #
+            # `jurisdiction_note` lives on the agency record itself, so it
+            # cannot drift from the agency being named.
+            "rule": agency.jurisdiction_note or "",
+            "subject": subject,
+            "body": body,
+        }
+
     @app.get("/api/inspect/{job_id}")
     async def inspection_status(request: Request, job_id: str):
         job = request.app.state.inspections.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="No such analysis")
+        # A run started by a signed-in person carries their address, both in
+        # `sent_to` and in the Send stage's own detail line. Job ids are random
+        # and unguessable, but "unguessable" is not an access check, and this
+        # route had none -- so one is added for exactly the jobs that need it.
+        # Runs with no recipient (the case page's own analysis) are unaffected.
+        if job.recipient:
+            asker = current_user(request)
+            if asker is None or asker.mailable != job.recipient:
+                raise HTTPException(status_code=404, detail="No such analysis")
         return job.as_dict()
 
     @app.get("/api/where")
@@ -750,90 +1063,217 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
 
         **It does not send anything, and it stores nothing.** It returns text and
         an address. The last action belongs to whoever is holding the phone --
-        their mail app, their thumb.
+        their mail app, their thumb. The route that *does* send and store is
+        `POST /api/incidents`, and it needs somebody signed in.
         """
-        from road_cleaner.adapters.geo.places import OutsideCoverageError, locate
-        from road_cleaner.domain import narrative
-        from road_cleaner.domain.enums import HazardType, Severity
-        from road_cleaner.domain.models import Detection
-
         c = request.app.state.container
-        body = await request.json()
-
-        try:
-            lat, lng = float(body["lat"]), float(body["lng"])
-        except (KeyError, TypeError, ValueError):
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "A report needs coordinates. Without them a crew has nowhere "
-                    "to go, and there is no way to tell whose road this is."
-                ),
-            ) from None
-
-        try:
-            place = locate(lat, lng)
-        except OutsideCoverageError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-        try:
-            hazard = HazardType(body.get("hazard", "debris"))
-        except ValueError:
-            hazard = HazardType.DEBRIS
-
-        detection = Detection(
-            camera_id="DASHCAM",
-            frame_id="",
-            hazard_type=hazard,
-            lane_position="unknown",
-            severity=Severity(body.get("severity", "medium")),
-            confidence=float(body.get("confidence", 0.0)),
-            description=str(body.get("description", "")).strip(),
-            model_name=str(body.get("model", "unknown")),
-        )
-
-        # A pin has no camera, so it has no owner -- which is exactly what the
-        # `state-dot-fallback` rule exists for.
-        camera = Camera(
-            id="DASHCAM",
-            state=place.state,
-            name=place.nearest or place.state_name,
-            road="an unnamed road",
-            lat=lat,
-            lng=lng,
-            snapshot_url="dashcam://live",
-            owner_agency_id=None,
-        )
-        verdict = await c.jurisdiction.resolve(camera, detection, c.reasoner)
-        if not verdict.resolved:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"No agency on file for {place.state_name}. Holding rather "
-                    "than sending this to the wrong desk."
-                ),
-            )
-
-        agency = verdict.agency
-        report = narrative.report_body(
-            detection,
-            place.label,
-            narrative.observed_at(c.clock.now()),
-            attachment_count=1,
-            tier=1,
-        )
+        composed = await _compose_dashcam_report(c, await request.json())
+        agency = composed.agency
         return {
-            "location": place.label,
-            "state": place.state,
+            "location": composed.place.label,
+            "state": composed.place.state,
             "agency": agency.name,
             # Present only when that DOT genuinely publishes an address. Most
             # route through a form instead, and the page says so rather than
             # inventing somewhere for the mail to go.
             "email": agency.email or None,
             "endpoint": agency.endpoint or None,
-            "subject": narrative.report_subject(detection, place.short, tier=1),
-            "body": report,
+            "subject": composed.subject,
+            "body": composed.body,
         }
+
+    # -------------------------------------------------------------- incidents
+    #
+    # What a signed-in person kept from their own dashcam. Everything here is
+    # scoped to the uid on a verified ID token -- there is no route that takes
+    # an owner as a parameter, because that is a route somebody forgets to
+    # check.
+
+    @app.post("/api/incidents", status_code=201)
+    async def create_incident(
+        request: Request,
+        meta: str = Form(...),
+        image: UploadFile = File(...),
+        user: AuthUser = Depends(require_mailable_user),
+    ):
+        """Save a dashcam finding and mail it to the person who found it.
+
+        The one route in this application that sends mail to an address nobody
+        put in a configuration file. What makes that safe is that the address is
+        never read from the request: it comes off a Google-signed ID token, via
+        `AuthUser.mailable`, and `allow_destination` permits exactly that string
+        for exactly the length of this send. See `filing/base.guard_live_send`.
+
+        Order matters here. The report is composed first, because that is the
+        step that can legitimately fail (no coordinates, outside coverage, no
+        agency for that state) and failing before anything is written leaves
+        nothing to clean up. The image is stored next, so the mail can enclose
+        it. The record is written last and reflects what actually happened,
+        including a DOT send that was attempted and refused.
+        """
+        from road_cleaner.adapters.filing.base import ComposedReport, allow_destination
+        from road_cleaner.adapters.filing.email_channel import EmailChannel
+        from road_cleaner.domain.enums import AgencyLevel, Channel
+        from road_cleaner.domain.models import Agency, BoundingBox, Incident
+        from road_cleaner.ports.filing_channel import FilingError
+
+        c = request.app.state.container
+
+        try:
+            body = json.loads(meta)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="`meta` is not valid JSON.") from None
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=422, detail="`meta` must be a JSON object.")
+
+        jpeg = await image.read()
+        if not jpeg:
+            raise HTTPException(status_code=422, detail="The still is empty.")
+        # The same ceiling `/api/dashcam/look` applies to the frames it analyses,
+        # for the same reason and on images from the same camera.
+        if len(jpeg) > DASHCAM_MAX_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    f"That still is {len(jpeg) // 1024}KB. The limit is "
+                    f"{DASHCAM_MAX_BYTES // 1024}KB -- the dashcam sends a "
+                    "downscaled JPEG, so this is not one of ours."
+                ),
+            )
+
+        composed = await _compose_dashcam_report(c, body)
+        agency = composed.agency
+        detection = composed.detection
+        place = composed.place
+
+        incident = Incident(
+            uid=user.uid,
+            hazard_type=detection.hazard_type,
+            hazard_label=detection.box_label,
+            severity=detection.severity,
+            confidence=detection.confidence,
+            description=detection.description,
+            box=BoundingBox(**body["box"]) if isinstance(body.get("box"), dict) else None,
+            box_is_measured=bool(body.get("box_measured")),
+            model_name=detection.model_name,
+            lat=place.lat,
+            lng=place.lng,
+            location=place.label,
+            state=place.state,
+            agency_id=agency.id,
+            agency_name=agency.name,
+            agency_email=agency.email or None,
+            agency_endpoint=agency.endpoint or None,
+            channel=agency.channel,
+            rule_id=composed.rule_id,
+            report_subject=composed.subject,
+            report_body=composed.body,
+        )
+
+        # Under the uid, so the ownership check on the way back out is a path
+        # comparison rather than a field comparison.
+        key = f"incidents/{user.uid}/{incident.id}.jpg"
+        await c.blobs.put(key, jpeg, content_type="image/jpeg")
+        incident.image_keys = [key]
+
+        channel = EmailChannel(
+            host=c.settings.smtp_host,
+            port=c.settings.smtp_port,
+            user=c.settings.smtp_user,
+            password=c.settings.smtp_password,
+            from_address=c.settings.filing_from_address,
+        )
+
+        # --- the copy that goes to whoever found it
+        address = user.mailable
+        yours = Agency(
+            id="road-cleaner-you",
+            name="you",
+            level=AgencyLevel.STATE_DOT,
+            state=place.state,
+            channel=Channel.EMAIL,
+            email=address,
+        )
+        report = ComposedReport(
+            destination=address,
+            subject=composed.subject,
+            body=_your_copy(composed, agency),
+            inline_attachments=[("road-hazard.jpg", jpeg)],
+        )
+        try:
+            with allow_destination(address):
+                await channel.transmit(report, yours)
+        except FilingError as exc:
+            # The image is already stored and the report already composed, so
+            # this is reported rather than raised: losing the record because the
+            # mail server was down would be the worse of the two failures.
+            log.warning("Could not mail incident %s to %s: %s", incident.id, address, exc)
+        else:
+            incident.emailed_to = address
+            incident.emailed_at = c.clock.now()
+
+        # --- the copy that goes to the agency, if this deployment does that
+        #
+        # DASHCAM_NOTIFY_DOT opens this code path and nothing else. The address
+        # below is an agency's, so it still has to clear guard_live_send the
+        # ordinary way -- through LIVE_FILING_ALLOWLIST or ALLOW_LIVE_FILING --
+        # and is deliberately *not* wrapped in allow_destination. Turning the
+        # flag on by itself can never put mail in a real maintenance desk.
+        if c.settings.dashcam_notify_dot and agency.email:
+            try:
+                await channel.transmit(
+                    ComposedReport(
+                        destination=agency.email,
+                        subject=composed.subject,
+                        body=composed.body,
+                        inline_attachments=[("road-hazard.jpg", jpeg)],
+                    ),
+                    agency,
+                )
+            except FilingError as exc:
+                incident.dot_error = str(exc)
+                log.info("DOT send for incident %s refused: %s", incident.id, exc)
+            else:
+                incident.dot_notified = True
+                incident.dot_destination = agency.email
+
+        await c.incidents.save(incident)
+        return S.incident_row(incident)
+
+    @app.get("/api/incidents")
+    async def list_incidents(
+        request: Request, user: AuthUser = Depends(require_user), limit: int = 100
+    ):
+        c = request.app.state.container
+        found = await c.incidents.list_for_user(user.uid, limit=max(1, min(limit, 500)))
+        return {"incidents": [S.incident_row(i) for i in found]}
+
+    @app.get("/api/incidents/{incident_id}/image")
+    async def incident_image(
+        request: Request, incident_id: str, user: AuthUser = Depends(require_user)
+    ):
+        """The boxed still, for its owner only.
+
+        Deliberately not served through `/frames/`, which is unauthenticated and
+        takes an arbitrary blob key. This resolves the key from a record that was
+        looked up under the caller's own uid, so there is no key a caller can
+        supply and no incident of somebody else's it can name.
+        """
+        c = request.app.state.container
+        incident = await c.incidents.get(user.uid, incident_id)
+        if incident is None or not incident.image_keys:
+            raise HTTPException(status_code=404, detail="No such incident.")
+        try:
+            data = await c.blobs.get(incident.image_keys[0])
+        except BlobNotFoundError:
+            raise HTTPException(status_code=404, detail="That still is gone.") from None
+        return Response(
+            content=data,
+            media_type="image/jpeg",
+            # Private: it is somebody's own photograph, and a shared cache must
+            # not hand it to the next person who asks for the same URL.
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
 
     @app.post("/api/simulate/{case_id}")
     async def start_render(request: Request, case_id: str):

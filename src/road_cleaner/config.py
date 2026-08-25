@@ -260,6 +260,69 @@ class Settings(BaseSettings):
     web_host: str = Field(default="127.0.0.1", alias="WEB_HOST")
     web_port: int = Field(default=8080, alias="WEB_PORT")
 
+    # ------------------------------------------------------------- accounts
+    # Firebase Authentication, Google sign-in only. The point of insisting on
+    # Google is that its addresses arrive already verified, and a verified
+    # address is the whole basis on which this application is willing to send
+    # somebody mail without asking a human first.
+    #
+    # None of these four are secret. The API key in particular ships inside the
+    # client bundle by design -- it identifies the project to Firebase, it does
+    # not authorise anything. It needs no Secret Manager entry, unlike
+    # SMTP_PASSWORD. What actually protects an account is the ID token, which is
+    # signed by Google and verified server-side in `web/auth.py`.
+    firebase_project_id: str | None = Field(default=None, alias="FIREBASE_PROJECT_ID")
+    firebase_api_key: str | None = Field(default=None, alias="FIREBASE_API_KEY")
+    firebase_auth_domain: str | None = Field(default=None, alias="FIREBASE_AUTH_DOMAIN")
+    firebase_app_id: str | None = Field(default=None, alias="FIREBASE_APP_ID")
+
+    # ------------------------------------------------------------- dashcam
+    # How long a confirmed find stays reportable before it is dropped. Looking
+    # stops for this window: a hazard is one object, and continuing to spend
+    # Vertex calls on the thing you have already found is waste. Unclicked, the
+    # find is discarded -- nothing is written and nothing is sent.
+    dashcam_report_window_seconds: int = Field(
+        default=15, alias="DASHCAM_REPORT_WINDOW_SECONDS"
+    )
+    # Whether a reported dashcam finding is also mailed to the agency that owns
+    # the road, on top of the copy that goes to whoever reported it.
+    #
+    # Off, and turning it on is deliberately not sufficient on its own: an
+    # agency address still has to clear `guard_live_send` the ordinary way, via
+    # LIVE_FILING_ALLOWLIST or ALLOW_LIVE_FILING. This flag opens the code path;
+    # it does not open the wall. Flipping it can never, by itself, put mail in a
+    # real maintenance desk's inbox.
+    dashcam_notify_dot: bool = Field(default=False, alias="DASHCAM_NOTIFY_DOT")
+
+    @property
+    def auth_configured(self) -> bool:
+        """Whether sign-in can work at all.
+
+        All four or none: a project id with no API key gives a page that renders
+        a sign-in button which cannot possibly succeed, and the honest thing is
+        to not render it.
+        """
+        return all(
+            (
+                self.firebase_project_id,
+                self.firebase_api_key,
+                self.firebase_auth_domain,
+                self.firebase_app_id,
+            )
+        )
+
+    @property
+    def firebase_web_config(self) -> dict[str, str]:
+        """The public config the browser SDK needs. Empty when unconfigured."""
+        if not self.auth_configured:
+            return {}
+        return {
+            "apiKey": self.firebase_api_key or "",
+            "authDomain": self.firebase_auth_domain or "",
+            "projectId": self.firebase_project_id or "",
+            "appId": self.firebase_app_id or "",
+        }
+
     # --------------------------------------------------------- resolution
     @field_validator(
         "sqlite_path",

@@ -346,3 +346,73 @@ class GateResult(Base):
     corroborating_ids: list[str] = Field(default_factory=list)
     matched_event: OfficialEvent | None = None
     matched_distance_m: float | None = None
+
+
+# ------------------------------------------------------------------- incidents
+
+
+class Incident(Base):
+    """Something a signed-in person saw through their own dashcam, and kept.
+
+    Deliberately *not* a `Case`. A Case is the traffic-camera pipeline's unit of
+    work: it has a sequenced public id, it counts toward the statistics on the
+    front page, it appears in the scenario library, and the Auditor keeps
+    re-checking it until the road is clear. None of that is true of a phone
+    pointed at a road for ninety seconds, and letting one become the other would
+    put user-submitted findings into the numbers this project reports about
+    itself.
+
+    So this is its own record, owned by a `uid`, holding the thing the person
+    actually wants back later: the picture with the box burned into it, where
+    they were, what the model said, which agency owns that road, and what was
+    done about it. Written only when somebody presses the button -- a find that
+    times out unreported leaves nothing behind at all.
+    """
+
+    id: str = Field(default_factory=new_id)
+    uid: str
+    created_at: datetime = Field(default_factory=utcnow)
+
+    # --- what the model saw
+    hazard_type: HazardType
+    hazard_label: str = ""
+    severity: Severity
+    confidence: float
+    description: str = ""
+    box: BoundingBox | None = None
+    box_is_measured: bool = False
+    model_name: str = ""
+
+    # --- where
+    lat: float
+    lng: float
+    location: str = ""
+    state: str = ""
+
+    # --- whose road it is. Resolved through the same jurisdiction registry the
+    # rest of the system uses, so a saved incident names the same agency a real
+    # case at that coordinate would have named.
+    agency_id: str | None = None
+    agency_name: str | None = None
+    agency_email: str | None = None
+    agency_endpoint: str | None = None
+    channel: Channel | None = None
+    rule_id: str | None = None
+
+    # --- the report, as sent
+    report_subject: str = ""
+    report_body: str = ""
+
+    # --- what actually happened to it. Two separate facts on purpose: the copy
+    # to the reporter is the normal path, and the copy to the agency is the one
+    # that needs DASHCAM_NOTIFY_DOT *and* an address that clears guard_live_send.
+    # A single "sent" boolean could not tell you which of those occurred.
+    emailed_to: str | None = None
+    emailed_at: datetime | None = None
+    dot_notified: bool = False
+    dot_destination: str | None = None
+    dot_error: str | None = None
+
+    # Blob store keys, not URLs. The store may be local disk or GCS, and a URL
+    # baked in at write time would be wrong the moment the deployment moves.
+    image_keys: list[str] = Field(default_factory=list)

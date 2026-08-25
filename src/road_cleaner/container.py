@@ -125,6 +125,10 @@ class Container:
     video: object = None
     speech: object = None
     music: object = None
+    # What signed-in people kept from their own dashcams. A separate store from
+    # `repository` because it is owned by a uid and never counts toward the
+    # fleet's statistics -- see `ports/incident_store`.
+    incidents: object = None
 
     @property
     def gate_config(self) -> GateConfig:
@@ -141,6 +145,8 @@ class Container:
     async def startup(self) -> None:
         _require_place_data()
         await self.repository.initialize()
+        if self.incidents is not None:
+            await self.incidents.initialize()
         await self.bus.start()
         # The agency registry lives in YAML but is mirrored into the store so
         # the dashboard can join against it without reparsing the file.
@@ -148,7 +154,9 @@ class Container:
             await self.repository.upsert_agency(agency)
 
     async def shutdown(self) -> None:
-        for component in (self.bus, self.cameras, self.filing, self.repository):
+        for component in (self.bus, self.cameras, self.filing, self.repository, self.incidents):
+            if component is None:
+                continue
             close = getattr(component, "close", None)
             if close is not None:
                 await close()
@@ -158,6 +166,7 @@ class Container:
         return {
             "clock": type(self.clock).__name__,
             "repository": type(self.repository).__name__,
+            "incidents": type(self.incidents).__name__,
             "blobs": type(self.blobs).__name__,
             "bus": type(self.bus).__name__,
             "cameras": type(self.cameras).__name__,
@@ -207,6 +216,7 @@ def build_container(
         settings=settings,
         clock=resolved_clock,
         repository=_build_repository(settings),
+        incidents=_build_incidents(settings),
         blobs=_build_blobs(settings),
         bus=_build_bus(settings),
         cameras=_build_cameras(settings, scenarios, resolved_clock),
@@ -240,6 +250,24 @@ def _build_repository(settings: Settings):
             project=settings.google_cloud_project, database=settings.firestore_database
         )
     return SqliteCaseRepository(Path(settings.sqlite_path))
+
+
+def _build_incidents(settings: Settings):
+    """Where a signed-in person's saved dashcam findings go.
+
+    Follows REPOSITORY, the same switch the case repository uses, so a
+    deployment does not end up with its cases in Firestore and its incidents on
+    a disk that Cloud Run throws away.
+    """
+    if settings.repository == RepositoryKind.FIRESTORE:
+        from road_cleaner.adapters.incidents.firestore_incidents import FirestoreIncidentStore
+
+        return FirestoreIncidentStore(
+            project=settings.google_cloud_project, database=settings.firestore_database
+        )
+    from road_cleaner.adapters.incidents.local_incidents import LocalIncidentStore
+
+    return LocalIncidentStore(Path(settings.data_dir) / "incidents")
 
 
 def _build_blobs(settings: Settings):

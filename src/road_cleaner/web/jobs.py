@@ -259,6 +259,15 @@ class InspectJob:
     finished_at: float | None = None
     result: dict | None = None
     error: str | None = None
+    # Who this run's report is being mailed to, when that is a signed-in person
+    # rather than the demonstration inbox. Kept on the job so `start` can tell
+    # whether an in-flight run is one it may hand back to a second caller: two
+    # people pressing the same card want two different inboxes, and sharing the
+    # job would send one of them the other's mail.
+    #
+    # Never rendered -- see `as_dict`. It is somebody's address, and the polling
+    # endpoint has no owner check on the job id.
+    recipient: str | None = None
 
     @property
     def elapsed(self) -> float:
@@ -290,13 +299,24 @@ class InspectJobs:
         job = self._jobs.get(self._by_case.get(case_id, ""))
         return job if job is not None and job.state == "running" else None
 
-    def start(self, container, case_id: str) -> InspectJob:
-        """Begin an analysis, or hand back the one already running for this case."""
+    def start(
+        self, container, case_id: str, *, verified_recipient: str | None = None
+    ) -> InspectJob:
+        """Begin an analysis, or hand back the one already running for this case.
+
+        `verified_recipient` sends this run's report to a signed-in person
+        instead of the demonstration inbox. It must come from a verified ID
+        token -- see `Inspector.verified_recipient`.
+        """
         existing = self.active_for(case_id)
-        if existing is not None:
+        # Only shareable when both runs would end in the same place. Two people
+        # pressing the same card must not have one of them receive the other's
+        # mail, which is exactly what collapsing them onto one job would do.
+        if existing is not None and existing.recipient == verified_recipient:
             return existing
 
         job = InspectJob(id=uuid.uuid4().hex[:12], case_id=case_id)
+        job.recipient = verified_recipient
         self._jobs[job.id] = job
         self._by_case[case_id] = job.id
         self._forget_old()
@@ -312,7 +332,9 @@ class InspectJobs:
             job.result = result.as_dict()
 
         try:
-            outcome = await Inspector(container).run(job.case_id, on_progress=on_progress)
+            outcome = await Inspector(
+                container, verified_recipient=job.recipient
+            ).run(job.case_id, on_progress=on_progress)
         except asyncio.CancelledError:
             job.state = "failed"
             job.error = "The server stopped before the analysis finished."

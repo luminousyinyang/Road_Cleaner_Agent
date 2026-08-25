@@ -33,6 +33,10 @@ cloud = [
     "google-adk>=1.15",
     "google-genai>=1.39",
     "google-cloud-firestore>=2.21",
+    # Verifies Firebase ID tokens server-side. Here rather than in the core
+    # dependencies because it pulls the same Google stack the rest of this extra
+    # does; a local run without accounts should not have to install it.
+    "firebase-admin>=6.5",
     "google-cloud-storage>=2.19",
     "google-cloud-pubsub>=2.27",
     "google-cloud-secret-manager>=2.24",

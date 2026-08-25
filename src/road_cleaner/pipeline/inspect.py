@@ -309,9 +309,19 @@ def _box_dict(detection: Detection) -> dict[str, float] | None:
 class Inspector:
     """One analysis run over one case's clip."""
 
-    def __init__(self, container) -> None:
+    def __init__(self, container, *, verified_recipient: str | None = None) -> None:
         self.c = container
         self.settings = container.settings
+        # An address to send this run's report to *instead of* the demonstration
+        # inbox, belonging to whoever asked for the run.
+        #
+        # Named for where it must come from, because that is the only thing that
+        # makes it safe: a Google-verified address off a signature-checked ID
+        # token -- in practice `AuthUser.mailable`. Never a string from a request
+        # body. `_send` grants it past `guard_live_send` for the duration of the
+        # transmit, and an unverified address reaching here would turn that grant
+        # into an open relay.
+        self.verified_recipient = (verified_recipient or "").strip() or None
 
     async def run(self, case_id: str, *, on_progress=None) -> InspectResult:
         """Analyse the case's clip end to end. Never files.
@@ -481,15 +491,26 @@ class Inspector:
         return result
 
     def _demo_recipient(self) -> str | None:
-        """The demonstration inbox, if this deployment has one and may write to it.
+        """Where this run's report goes, or None if it goes nowhere.
 
-        Both settings are required and they are not the same question: one names
-        a recipient, the other permits sending to it. Absent either, this returns
-        None and the run ends at a composed report exactly as it always did.
+        A signed-in person asking for their own copy outranks the demonstration
+        inbox: they pressed the button, and the inbox exists precisely because
+        there was previously nobody to send to. Still requires SMTP -- an
+        address with no mail server is not a destination.
+
+        Otherwise the demonstration inbox, if this deployment has one and may
+        write to it. Both settings are required and they are not the same
+        question: one names a recipient, the other permits sending to it. Absent
+        either, this returns None and the run ends at a composed report exactly
+        as it always did.
         """
         s = self.settings
+        if not getattr(s, "smtp_host", None):
+            return None
+        if self.verified_recipient:
+            return self.verified_recipient
         address = (getattr(s, "demo_send_to", "") or "").strip()
-        if not address or not getattr(s, "smtp_host", None):
+        if not address:
             return None
         return address if address.lower() in s.live_filing_allowed else None
 
@@ -506,6 +527,7 @@ class Inspector:
         demonstration that files what the gate refused is showing something the
         product does not do.
         """
+        from road_cleaner.adapters.filing.base import allow_destination
         from road_cleaner.adapters.filing.email_channel import EmailChannel
         from road_cleaner.domain.enums import Channel
         from road_cleaner.ports.filing_channel import FilingError
@@ -543,7 +565,19 @@ class Inspector:
             body=result.report_body or "", attachments=keys, dry_run=False,
         )
         try:
-            await channel.transmit(channel.compose(filing, case, addressed), addressed)
+            # A verified user's own address is in no allowlist and never should
+            # be -- LIVE_FILING_ALLOWLIST is static operator configuration, not a
+            # place to accumulate everyone who ever signed in. So it is granted
+            # for exactly this transmit and released immediately after.
+            #
+            # The demonstration inbox takes the untouched path: it is already
+            # allowlisted, and routing it through the grant would make the
+            # allowlist look optional.
+            if self.verified_recipient and recipient == self.verified_recipient:
+                with allow_destination(recipient):
+                    await channel.transmit(channel.compose(filing, case, addressed), addressed)
+            else:
+                await channel.transmit(channel.compose(filing, case, addressed), addressed)
         except (FilingError, OSError) as exc:
             stage.state = "failed"
             stage.detail = str(exc)

@@ -105,8 +105,54 @@ if [[ -f .env ]]; then
       SMTP_HOST|SMTP_PORT|SMTP_USER|SMTP_PASSWORD|FILING_FROM_ADDRESS|DEMO_SEND_TO|LIVE_FILING_ALLOWLIST)
         [[ -n "${!key:-}" ]] || printf -v "${key}" '%s' "${value}"
         ;;
+      FIREBASE_PROJECT_ID|FIREBASE_API_KEY|FIREBASE_AUTH_DOMAIN|FIREBASE_APP_ID)
+        [[ -n "${!key:-}" ]] || printf -v "${key}" '%s' "${value}"
+        ;;
+      DASHCAM_NOTIFY_DOT|DASHCAM_REPORT_WINDOW_SECONDS)
+        [[ -n "${!key:-}" ]] || printf -v "${key}" '%s' "${value}"
+        ;;
     esac
-  done < <(grep -E '^(SMTP_|FILING_FROM_ADDRESS|DEMO_SEND_TO|LIVE_FILING_ALLOWLIST)' .env || true)
+  done < <(grep -E '^(SMTP_|FILING_FROM_ADDRESS|DEMO_SEND_TO|LIVE_FILING_ALLOWLIST|FIREBASE_|DASHCAM_)' .env || true)
+fi
+
+# --- accounts ---------------------------------------------------------------
+#
+# Same reasoning as the block below: these live in `.env`, which is kept out of
+# the image, so without passing them through the deployed site renders no
+# sign-in button and the dashcam quietly falls back to its share-sheet-only
+# behaviour. That looks like the feature failed to deploy.
+#
+# All four go in `--set-env-vars` as plain text, and that is correct -- none of
+# them is a secret. The API key ships inside the client bundle by design; it
+# identifies the project and authorises nothing. What protects an account is the
+# ID token, verified server-side against Google's signature.
+if [[ -n "${FIREBASE_PROJECT_ID:-}" && -n "${FIREBASE_API_KEY:-}" \
+   && -n "${FIREBASE_AUTH_DOMAIN:-}" && -n "${FIREBASE_APP_ID:-}" ]]; then
+  say "Accounts"
+  ENV_VARS="${ENV_VARS},FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
+  ENV_VARS="${ENV_VARS},FIREBASE_API_KEY=${FIREBASE_API_KEY}"
+  ENV_VARS="${ENV_VARS},FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}"
+  ENV_VARS="${ENV_VARS},FIREBASE_APP_ID=${FIREBASE_APP_ID}"
+  ENV_VARS="${ENV_VARS},DASHCAM_NOTIFY_DOT=${DASHCAM_NOTIFY_DOT:-false}"
+  ENV_VARS="${ENV_VARS},DASHCAM_REPORT_WINDOW_SECONDS=${DASHCAM_REPORT_WINDOW_SECONDS:-15}"
+  echo "  sign-in: Google, project ${FIREBASE_PROJECT_ID}"
+  # Saved incidents are Firestore documents and their stills are GCS objects, so
+  # both roles are needed whether or not --with-firestore/--with-fleet was asked
+  # for. Bound here rather than added to ROLES above, which has already run.
+  for role in roles/datastore.user roles/storage.objectAdmin; do
+    gcloud projects add-iam-policy-binding "${PROJECT}" \
+      --member="serviceAccount:${SERVICE_ACCOUNT}" \
+      --role="${role}" --condition=None >/dev/null
+  done
+  echo "  roles bound: roles/datastore.user roles/storage.objectAdmin"
+  if [[ ${WITH_FIRESTORE} -ne 1 ]]; then
+    echo "  NOTE: without --with-firestore the incident store writes to local disk,"
+    echo "  which Cloud Run throws away on every deploy. Re-run with it to persist."
+  fi
+else
+  echo "  accounts not configured — set FIREBASE_PROJECT_ID, FIREBASE_API_KEY,"
+  echo "  FIREBASE_AUTH_DOMAIN and FIREBASE_APP_ID in .env to deploy sign-in."
+  echo "  The site works without it; the dashcam keeps its share-sheet behaviour."
 fi
 
 if [[ -n "${DEMO_SEND_TO:-}" && -n "${LIVE_FILING_ALLOWLIST:-}" && -n "${SMTP_HOST:-}" ]]; then

@@ -6,6 +6,8 @@ a browser would. No credentials, no network.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -69,15 +71,69 @@ class TestPages:
         r = client.get("/")
         assert r.status_code == 200
         assert "files the" in r.text and "paperwork" in r.text
-        # ...and the library, which is how you watch it happen.
-        #
-        # This used to require the drill console here too. Both consoles were
-        # removed from the front door once a case page could run the whole
-        # pipeline and send by itself: two places to watch the same thing, one
-        # of which stopped short of the interesting part, is a worse front door
-        # than the cases themselves.
         assert "scenario library" in r.text.lower()
-        assert "drill-form" not in r.text
+
+    def test_the_library_is_split_into_the_two_endings(self, client):
+        """The cases are grouped by how far the automation is allowed to go.
+
+        One section finishes the job and mails the report; the other stops at
+        naming the agency and hands it over. That distinction is the product --
+        most DOTs publish a web form and no address, so the second ending is the
+        common one and pretending otherwise would oversell it.
+        """
+        body = client.get("/").text
+        assert 'id="auto"' in body and 'id="assisted"' in body
+        assert "Full automation" in body
+        assert "DOT contact" in body
+        # Full automation first: it is the claim, and the handover is the
+        # caveat on it.
+        assert body.index('id="auto"') < body.index('id="assisted"')
+
+    def test_every_case_appears_in_exactly_one_section(self, client):
+        """The split divides the library; it does not duplicate it."""
+        import re
+
+        body = client.get("/").text
+        # Anchored to the card element. `data-case` also appears on the Generate
+        # button inside a clipless card, so a bare attribute search counts every
+        # such case twice and fails on a page that is perfectly correct.
+        ids = re.findall(r"<article[^>]*\bdata-case=\"([^\"]+)\"", body)
+        assert ids, "no case cards rendered"
+        assert len(ids) == len(set(ids)), "a case was listed under both modes"
+
+    def test_both_sections_get_cases(self, client):
+        """An empty half would make the page look broken rather than split."""
+        import re
+
+        body = client.get("/").text
+        auto = body[body.index('id="auto"') : body.index('id="assisted"')]
+        assisted = body[body.index('id="assisted"') :]
+        assert re.findall(r'data-mode="auto"', auto)
+        assert re.findall(r'data-mode="assisted"', assisted)
+
+    def test_the_consoles_are_not_on_the_front_door(self, client):
+        """The prompt-driven drill and live-send belong to the case pages.
+
+        They were briefly restored here and are deliberately gone again: the
+        front door demonstrates the *cases*, and a text box that invents a
+        hazard is a different product from a library of real ones.
+        """
+        body = client.get("/").text
+        assert "drill-form" not in body
+        assert "demo-form" not in body
+
+    def test_no_dark_section_inherits_a_paper_gap(self, client):
+        """The stat band and the library are both dark, and adjacent.
+
+        `.library` carried its top spacing as a margin, which sits *outside* the
+        background -- so with nothing between the two dark sections, 44px of
+        paper-coloured body showed through as a full-bleed white bar. Padding
+        paints; margin does not.
+        """
+        css = client.get("/static/css/app.css").text
+        rule = css[css.index(".library {") : css.index(".library {") + 200]
+        assert "margin-top" not in rule
+        assert "padding" in rule
 
     def test_road_log_lists_cases(self, client, populated):
         _, cases = populated
@@ -792,7 +848,14 @@ class TestDashcam:
         assert r.status_code == 200
         assert "dash-video" in r.text
         # The promise, stated on the page itself.
-        assert "Nothing is stored" in r.text
+        #
+        # It used to be the stronger "Nothing is stored", and that was true when
+        # the only action was the share sheet. Reporting now saves the still and
+        # mails it, so the page has to say the narrower thing it can still
+        # stand behind: looking keeps nothing, and a find you do not report is
+        # discarded whole.
+        assert "Only what you report is kept" in r.text
+        assert "Nothing is stored" not in r.text, "a promise the page can no longer keep"
 
     def test_it_looks_and_answers(self, client):
         r = client.post(
@@ -858,13 +921,47 @@ class TestSendHandsOverWithoutNavigating:
     """
 
     def test_the_panel_is_on_the_page_and_starts_hidden(self, client, populated):
+        """Only on the ending that has a handover.
+
+        A full-automation case has no `Send to the agency` button to reveal it:
+        that run finishes by mailing the person who asked. Picking `cases[0]`
+        and hoping used to work and now depends on which section that case
+        landed in, so this asks `mode_for` rather than guessing.
+        """
+        from road_cleaner.web.serializers import mode_for
+
         _, cases = populated
-        body = client.get(f"/cases/{cases[0].id}").text
+        assisted = next((c for c in cases if mode_for(c.id) == "assisted"), None)
+        if assisted is None:
+            pytest.skip("no assisted case in this fixture")
+
+        body = client.get(f"/cases/{assisted.id}").text
         if "run__missing" in body:
             pytest.skip("this case has no clip")
         assert 'id="run-handover"' in body
         assert 'id="run-fields"' in body
         assert "hidden" in body.split('id="run-handover"')[1][:40]
+
+    def test_a_full_automation_case_ends_differently(self, client, populated):
+        """It must not offer the handover, and must not claim to send by hand.
+
+        The card that links here says it will email you. Landing on `Send to
+        the agency` and `Open a draft` is the page contradicting the button
+        that got you to it.
+        """
+        from road_cleaner.web.serializers import mode_for
+
+        _, cases = populated
+        auto = next((c for c in cases if mode_for(c.id) == "auto"), None)
+        if auto is None:
+            pytest.skip("no auto case in this fixture")
+
+        body = client.get(f"/cases/{auto.id}").text
+        if "run__missing" in body:
+            pytest.skip("this case has no clip")
+        assert 'id="run-handover"' not in body
+        assert 'id="run-send"' not in body
+        assert "run-go" in body
 
     def test_the_page_never_ships_an_unconditional_redirect(self, client):
         """The mechanism, guarded at the source.
@@ -900,11 +997,131 @@ class TestSendHandsOverWithoutNavigating:
         pytest.skip("no case in the fixture carries a cached analysis")
 
 
+class TestTheTwoLibraryModes:
+    """The card buttons, and what each of them is allowed to do."""
+
+    def test_full_automation_needs_an_account(self, client, a_case):
+        """It finishes by sending mail, so it needs an inbox to send to."""
+        r = client.post(f"/api/cases/{a_case.id}/automate")
+        assert r.status_code in (401, 501)
+
+    def test_a_forged_token_does_not_buy_a_run(self, client, a_case):
+        r = client.post(
+            f"/api/cases/{a_case.id}/automate",
+            headers={"Authorization": "Bearer nonsense"},
+        )
+        assert r.status_code in (401, 501)
+
+    def test_the_handover_is_public(self, client, a_case):
+        """It discloses an agency's published address and a report about a
+        generated clip. Nothing there is anybody's to protect."""
+        r = client.get(f"/api/cases/{a_case.id}/handover")
+        assert r.status_code == 200
+
+        body = r.json()
+        assert body["agency"]
+        assert body["subject"]
+        assert body["body"]
+        # One of the two endings, never neither: a card that opens a dialog
+        # naming no way to reach anyone is a dead end with extra steps.
+        assert body["email"] or body["endpoint"] or body["destination"]
+
+    def test_the_handover_names_a_route(self, client, a_case):
+        channel = client.get(f"/api/cases/{a_case.id}/handover").json()["channel"]
+        assert channel in {"email", "maintenance_form", "open311"}
+
+    def test_a_missing_case_is_a_404(self, client):
+        assert client.get("/api/cases/NOPE-1/handover").status_code == 404
+        assert client.post("/api/cases/NOPE-1/automate").status_code in (401, 404, 501)
+
+    def test_a_cases_mode_does_not_move_when_the_library_is_filtered(self, client):
+        """It was index parity over the *filtered* list, which reshuffled the
+        whole split on every hazard chip and left the case page unable to work
+        out which ending its own case belonged to."""
+        import re
+
+        from road_cleaner.web.serializers import mode_for
+
+        def modes(url):
+            body = client.get(url).text
+            return dict(
+                re.findall(r'<article[^>]*data-case="([^"]+)"[^>]*data-mode="([^"]+)"', body)
+            )
+
+        everything = modes("/")
+        assert everything, "no cards rendered"
+        for case_id, mode in everything.items():
+            assert mode == mode_for(case_id)
+
+        # Same answer under a filter that removes most of the library.
+        for case_id, mode in modes("/?hazard=debris").items():
+            assert mode == everything[case_id]
+
+    def test_the_handover_route_matches_the_agencys_own_channel(self, client, populated):
+        """Several agencies publish a contact address *and* route reports
+        through a form. Offering a mail draft to those puts the report where
+        they do not read it."""
+        _, cases = populated
+        for case in cases[:6]:
+            r = client.get(f"/api/cases/{case.id}/handover")
+            if r.status_code != 200:
+                continue
+            body = r.json()
+            if body["channel"] == "email":
+                assert body["email"], "an email channel with no address"
+            else:
+                assert body["endpoint"] or body["destination"]
+
+
+class TestIncidentsNeedAnAccount:
+    """Every incident route is scoped to a verified uid, and says so on refusal.
+
+    The suite runs with FIREBASE_* unset, so these get the 501 that means "this
+    deployment has no accounts" rather than the 401 that means "sign in". Both
+    are refusals, and the distinction is the point: one is the operator's
+    problem and the other is the caller's.
+    """
+
+    REFUSED = {401, 501}
+
+    def test_saving_an_incident_is_refused(self, client):
+        r = client.post(
+            "/api/incidents",
+            data={"meta": json.dumps({"lat": 33.7, "lng": -84.4})},
+            files={"image": ("x.jpg", b"\xff\xd8\xff", "image/jpeg")},
+        )
+        assert r.status_code in self.REFUSED
+
+    def test_listing_incidents_is_refused(self, client):
+        assert client.get("/api/incidents").status_code in self.REFUSED
+
+    def test_reading_somebody_elses_still_is_refused(self, client):
+        r = client.get("/api/incidents/anything/image")
+        assert r.status_code in self.REFUSED
+
+    def test_a_made_up_bearer_token_is_not_a_sign_in(self, client):
+        r = client.get("/api/incidents", headers={"Authorization": "Bearer nonsense"})
+        assert r.status_code in self.REFUSED
+
+    def test_the_refusal_explains_itself(self, client):
+        """Whoever hits this is usually the person who can fix it."""
+        detail = client.get("/api/incidents").json()["detail"]
+        assert "FIREBASE" in detail or "Sign in" in detail
+
+    def test_the_page_itself_is_public_and_empty(self, client):
+        """It cannot gate server-side -- the token is not sent with a document
+        request -- so it ships empty and the API does the enforcing."""
+        r = client.get("/incidents")
+        assert r.status_code == 200
+        assert 'id="inc-list"' in r.text or "not configured" in r.text
+
+
 class TestTheDashcamCanReport:
     """The phone finds it; a person sends it.
 
-    Nothing about this path may reach the filing machinery — the button hands the
-    picture and the text to the device's own share sheet and stops there.
+    The share-sheet path still reaches no filing machinery — it hands the
+    picture and the text to the device and stops. Saving and mailing is the
+    separate, authenticated `POST /api/incidents`, covered above.
     """
 
     def test_the_report_button_ships_and_starts_hidden(self, client):
@@ -938,7 +1155,7 @@ class TestTheDashcamCanReport:
         which directly contradicts having a Report button."""
         body = client.get("/dashcam").text
         assert "not a registered public camera" not in body
-        assert "Nothing is stored" in body
+        assert "Only what you report is kept" in body
 
     def test_hidden_actually_hides(self, client):
         """The UA rule loses to any author `display`, and `.dash__idle` set one."""
@@ -1166,11 +1383,11 @@ class TestTheMapPicker:
         client.get("/api/where", params={"lat": 30.2672, "lng": -97.7431})
         assert count() == before, "a pin drop created a camera"
 
-    def test_the_front_door_no_longer_carries_a_map(self, client):
-        """The only map on `/` belonged to the drill, which is gone from it.
+    def test_the_front_door_carries_no_map(self, client):
+        """The only map on `/` belonged to the drill, which is not on it.
 
-        Leaflet went with it. It is two external requests on the page judges
-        land on first, and nothing left there uses one -- the pin-drop map that
+        Leaflet goes with it: two external requests on the page a visitor lands
+        on first, for a component nothing there uses. The pin-drop map that
         matters is on the case page, tested below.
         """
         body = client.get("/").text

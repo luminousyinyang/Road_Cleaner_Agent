@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Your incidents — Road Cleaner{% endblock %}
+
+{% block content %}
+<div class="wrap">
+  <section class="inc">
+    <header class="inc__head">
+      <h1>What you reported.</h1>
+      <p class="inc__lede">
+        Every hazard you kept from the dashcam, with the still the model found it
+        in, where you were, and which agency owns that stretch of road. The
+        footage is not here — none was ever recorded. Only the frame the box was
+        drawn on.
+      </p>
+    </header>
+
+    {% if not auth_configured %}
+    <p class="inc__empty">
+      Accounts are not configured on this deployment, so there is nothing to
+      show. Set the <code>FIREBASE_*</code> values in <code>.env</code>.
+    </p>
+    {% else %}
+    {# Three states, and they are genuinely different: not signed in, signed in
+       with nothing yet, and a list. Rendered as separate blocks rather than one
+       that gets rewritten, so none of them can half-appear. #}
+    <div class="inc__gate" id="inc-gate" hidden>
+      <p class="inc__gate-lead">Sign in to see your incidents.</p>
+      <button class="btn btn--primary" type="button" data-gate-signin>
+        Sign in with Google
+      </button>
+    </div>
+
+    <p class="inc__loading" id="inc-loading" hidden>Loading…</p>
+    <p class="run__error" id="inc-error" hidden></p>
+
+    <p class="inc__empty" id="inc-empty" hidden>
+      Nothing yet. Open the <a href="/dashcam">dashcam</a>, point it at a road,
+      and press <em>Report it</em> when it finds something.
+    </p>
+
+    <div class="inc__list" id="inc-list" hidden></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/incidents.js?v={{ v }}" defer></script>
+{% endblock %}

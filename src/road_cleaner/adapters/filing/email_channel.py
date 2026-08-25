@@ -85,6 +85,15 @@ class EmailChannel(BaseFilingChannel):
                     subtype="jpeg",
                     filename=Path(key).name,
                 )
+
+        # Attachments the caller already holds, rather than ones to be read off
+        # a disk relative to `attachment_root`. The dashcam needs this: its
+        # stills go to a blob store that may be GCS, which has no filesystem
+        # path for a root to be relative to.
+        for filename, data in report.inline_attachments:
+            message.add_attachment(
+                data, maintype="image", subtype="jpeg", filename=filename
+            )
         return message
 
     async def transmit(self, report: ComposedReport, agency: Agency) -> FilingResult:

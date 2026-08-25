@@ -13,6 +13,9 @@ from __future__ import annotations
 import hashlib
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 from road_cleaner.domain.models import Agency, Case, Filing
@@ -30,12 +33,22 @@ class ComposedReport:
         body: str,
         payload: dict[str, Any] | None = None,
         attachments: list[str] | None = None,
+        inline_attachments: list[tuple[str, bytes]] | None = None,
     ) -> None:
         self.destination = destination
         self.subject = subject
         self.body = body
         self.payload = payload or {}
+        # Keys, resolved against a channel's `attachment_root` on the way out.
+        # Fine when the bytes are on the same disk as the process; pointed at
+        # the wrong root the message sends with every attachment silently
+        # missing, which is a failure mode worth knowing about.
         self.attachments = attachments or []
+        # `(filename, bytes)` instead, for callers holding the image rather than
+        # a path to it. The dashcam is the case that needs this: its stills live
+        # in a blob store that may be GCS, where there is no filesystem path for
+        # a root to be relative to.
+        self.inline_attachments = inline_attachments or []
 
 
 class BaseFilingChannel(ABC):
@@ -109,6 +122,10 @@ def guard_live_send(destination: str, channel: str) -> None:
     from road_cleaner.config import get_settings
 
     settings = get_settings()
+    # Narrowest first: one address, for the duration of one send, put there by
+    # code that verified it belongs to the person asking. See `allow_destination`.
+    if destination and destination.strip().lower() in _permitted.get():
+        return
     # Named explicitly, one address at a time. Checked before the global switch
     # so the demo path needs neither DRY_RUN=false nor ALLOW_LIVE_FILING=true --
     # which is the point: proving the last step is real should not also arm the
@@ -123,6 +140,43 @@ def guard_live_send(destination: str, channel: str) -> None:
         "as well as DRY_RUN=false, or the address named in LIVE_FILING_ALLOWLIST. "
         "Composing the report is unaffected."
     )
+
+
+# The third way past `guard_live_send`, and the narrowest. LIVE_FILING_ALLOWLIST
+# is static configuration and ALLOW_LIVE_FILING arms all seventy-two agencies;
+# neither can express "this one person's own address, for this one request".
+#
+# A ContextVar rather than a `permitted=` parameter on `transmit()` because the
+# existing guard's entire design is that a caller cannot forget it -- it is
+# checked inside `transmit`, not at the call site. Threading a new argument
+# through every channel would reintroduce exactly the omission the guard exists
+# to make impossible. Async-task-local, so two concurrent requests cannot see
+# each other's grant.
+_permitted: ContextVar[frozenset[str]] = ContextVar("permitted_destinations", default=frozenset())
+
+
+@contextmanager
+def allow_destination(address: str) -> Iterator[None]:
+    """Permit one address for the duration of this block, and no longer.
+
+    The only legitimate argument is an address a *verified* identity provider
+    vouched for -- in practice `AuthUser.mailable`, which is a Google-verified
+    address off a signature-checked ID token. Never a string from a request
+    body: that is a caller choosing who this application mails, which is the
+    thing the guard exists to prevent.
+
+    Deliberately does nothing for agency addresses. Mailing a real DOT stays
+    behind LIVE_FILING_ALLOWLIST or ALLOW_LIVE_FILING, so no feature flag
+    elsewhere can open that door by itself.
+    """
+    normalised = (address or "").strip().lower()
+    if not normalised:
+        raise ValueError("allow_destination needs an address.")
+    token = _permitted.set(_permitted.get() | {normalised})
+    try:
+        yield
+    finally:
+        _permitted.reset(token)
 
 
 def synthesize_reference(agency: Agency, case: Case) -> str:

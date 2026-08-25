@@ -5,14 +5,20 @@
  * boxes land on real objects on a real road. Same prompt, same model, same
  * drawing code -- the only thing that changed is where the pixels come from.
  *
- * Two constraints shape all of it:
+ * Three constraints shape all of it:
  *
  * 1. Quota. Each look is a Vertex call and there are only twenty or thirty of
  *    them before it throttles. So: one request in flight at a time, a deliberate
  *    gap between looks, and a counter on screen. A demo that dies mysteriously
  *    at look twenty-two is worse than one that tells you it is at look nineteen.
- * 2. Nothing is kept. The server writes no frame, opens no case and files
- *    nothing. This file never asks it to.
+ * 2. Looking stops the moment something is found. A hazard is one object, and
+ *    spending more quota on the thing you have already seen is waste. The find
+ *    is held for a fixed window -- see `hold` -- and then dropped.
+ * 3. **A frame is only kept if you press the button.** Every frame goes to the
+ *    model and is discarded. The one exception is a find you actively report:
+ *    that still is stored and mailed to you, and it is the only thing here that
+ *    ever leaves the browser to be written down. A find that times out unpressed
+ *    leaves nothing behind at all -- no record, no mail, nothing uploaded.
  */
 
 (function () {
@@ -31,10 +37,20 @@
   const whereSlot = document.getElementById("dash-where");
   const errorSlot = document.getElementById("dash-error");
   const reportButton = document.getElementById("dash-report");
+  const gate = document.getElementById("dash-gate");
+  const shareButton = document.getElementById("dash-share");
+
+  const auth = window.RoadCleaner?.auth;
+  const authConfigured = root.dataset.auth === "on";
 
   // Long enough that a minute of looking costs about twenty calls rather than
   // sixty, short enough that the boxes still feel attached to the road.
   const EVERY_MS = 3000;
+
+  // How long a find stays reportable before it is dropped. Server-supplied
+  // (DASHCAM_REPORT_WINDOW_SECONDS) so the countdown on screen and the number in
+  // the page copy cannot disagree with each other.
+  const HOLD_MS = (Number(root.dataset.reportWindow) || 15) * 1000;
 
   // Wide enough for the model to see a tyre tread a hundred metres off, small
   // enough that the upload is a fraction of a second on a phone. Box coordinates
@@ -52,9 +68,44 @@
   // time somebody reaches for the button.
   let found = null;
   let here = null;       // {lat, lng, accuracy} once the browser tells us
+  let hold = null;       // the countdown on an unreported find, if one is up
   const canvas = document.createElement("canvas");
 
   toggle.addEventListener("click", () => (stream ? stop("Stopped.") : start()));
+
+  /* --- the sign-in gate -------------------------------------------------
+
+     Reporting mails the report to the person who made it, so there has to be
+     one. The camera itself is ungated: seeing the model draw boxes on a real
+     road is the demo, and making somebody sign in before they can look at that
+     would be a toll booth in front of the interesting part.
+
+     This hides a button. It is not the security boundary -- `POST /api/incidents`
+     rejects an unauthenticated call server-side, which is the check that counts. */
+  function signedIn() {
+    return Boolean(auth?.enabled && auth.user);
+  }
+
+  function paintGate() {
+    if (!gate) return;
+    // Not while the first auth state is still in flight: "signed out" and "not
+    // known yet" look the same, and flashing a sign-in panel at somebody who is
+    // already signed in reads as a bug.
+    if (!authConfigured || !auth?.resolved) {
+      gate.hidden = true;
+      return;
+    }
+    gate.hidden = signedIn();
+  }
+
+  if (auth) auth.onChange(paintGate);
+  paintGate();
+
+  document.querySelector("[data-gate-signin]")?.addEventListener("click", () => {
+    auth?.signIn().catch((err) => {
+      if (err?.code !== "auth/popup-closed-by-user") fail(err?.message || String(err));
+    });
+  });
 
   // Leaving the tab running the camera and the quota down is nobody's intent.
   document.addEventListener("visibilitychange", () => {
@@ -63,13 +114,24 @@
   window.addEventListener("pagehide", () => stop(""));
 
   async function start() {
+    // The camera itself is not gated -- watching the model draw boxes on a real
+    // road is the demo. But there is no point starting a session that cannot
+    // report, so if accounts are configured and nobody is signed in, say so and
+    // put the panel up rather than burning quota on looks with no destination.
+    if (authConfigured && !signedIn()) {
+      paintGate();
+      fail("Sign in first — a report goes to your inbox, so it needs an inbox.");
+      return;
+    }
+
     errorSlot.hidden = true;
     toggle.disabled = true;
-    // A new session reports on what this session finds. The previous find stays
-    // available right up until then, because driving past a hazard means the
-    // next frame is empty and that is when somebody reaches for the button.
+    // A new session reports on what this session finds, so anything held over
+    // from the last one goes.
+    clearHold();
     found = null;
     reportButton.hidden = true;
+    if (shareButton) shareButton.hidden = true;
     status.textContent = "Asking for the camera…";
 
     try {
@@ -134,6 +196,7 @@
   function stop(message) {
     if (timer) clearInterval(timer);
     timer = null;
+    clearHold();
     if (stream) stream.getTracks().forEach((track) => track.stop());
     stream = null;
     video.srcObject = null;
@@ -143,6 +206,12 @@
     toggle.disabled = false;
     if (message) status.textContent = message;
     clearBox();
+    // A find does not survive the camera being switched off. Its picture is
+    // held in memory here and nowhere else, and offering to report it after the
+    // session it belongs to has ended is offering a stale frame.
+    found = null;
+    reportButton.hidden = true;
+    if (shareButton) shareButton.hidden = true;
   }
 
   async function look() {
@@ -202,9 +271,6 @@
       clearBox();
       said.textContent = "Nothing worth reporting in that frame.";
       said.hidden = false;
-      // The previous find stays reportable. Driving past a hazard means the
-      // next frame is empty, and that is exactly when somebody reaches for the
-      // button.
       return;
     }
     drawBox(result);
@@ -212,7 +278,75 @@
     said.hidden = false;
 
     found = { result, jpeg, at: new Date(), where: here };
+    beginHold();
+  }
+
+  /* --- the decision window ----------------------------------------------
+
+     Something has been found, so stop looking and offer it. Two reasons to
+     pause rather than carry on: quota, because more calls on a hazard already
+     found buy nothing; and the picture, because the report is about the frame
+     the model saw, and continuing to look would keep replacing it with whatever
+     is in front of the lens by the time somebody reaches for the button.
+
+     Unpressed, the find is dropped and looking resumes. That is the quiet path
+     and it must stay quiet -- nothing is uploaded, nothing is stored, no mail. */
+  function beginHold() {
+    pauseLooking();
+    clearHold();
+
+    const until = Date.now() + HOLD_MS;
     reportButton.hidden = false;
+    reportButton.disabled = false;
+    if (shareButton) shareButton.hidden = false;
+
+    const tick = () => {
+      const left = Math.ceil((until - Date.now()) / 1000);
+      if (left <= 0) {
+        // Nobody wanted it. Drop it whole -- the JPEG included, which is the
+        // only copy of that frame anywhere.
+        clearHold();
+        found = null;
+        reportButton.hidden = true;
+        if (shareButton) shareButton.hidden = true;
+        clearBox();
+        said.textContent = "Let that one go. Still looking.";
+        resumeLooking();
+        return;
+      }
+      reportButton.textContent = `Report it · ${left}s`;
+    };
+
+    tick();
+    hold = setInterval(tick, 250);
+  }
+
+  function clearHold() {
+    if (hold) clearInterval(hold);
+    hold = null;
+  }
+
+  function pauseLooking() {
+    // Only announce the pause if we were actually looking. `beginHold` is also
+    // called to *re-arm* the clock after a share or a failed save, and in those
+    // cases the status line already says something more useful than the generic
+    // prompt -- overwriting it would throw away the confirmation or the error.
+    const wasLooking = Boolean(timer);
+    if (timer) clearInterval(timer);
+    timer = null;
+    if (wasLooking) status.textContent = "Found something. Report it, or it goes.";
+  }
+
+  /* Start looking again after a find is dealt with.
+     `note` replaces the default status line, so a confirmation worth reading --
+     "sent to you@example.com" -- is not wiped out by "Looking…" a millisecond
+     after it appears. */
+  function resumeLooking(note) {
+    // Only if the camera is still on. A hold that expires after somebody hit
+    // Stop must not quietly start the loop up again.
+    if (!stream || timer) return;
+    status.textContent = note || "Looking…";
+    timer = setInterval(look, EVERY_MS);
   }
 
   function drawBox(result) {
@@ -244,7 +378,104 @@
 
   // --- reporting -------------------------------------------------------
 
-  reportButton.addEventListener("click", report);
+  reportButton.addEventListener("click", keep);
+  shareButton?.addEventListener("click", report);
+
+  /* Keep it: store the finding and mail it to whoever is signed in.
+   *
+   * This is the only path in this file that uploads anything. It sends the
+   * frame the model actually found the hazard in -- with the box burned into
+   * the picture, because a rectangle that only exists as a `<div>` on this page
+   * is worth nothing in somebody's inbox -- plus what the model said and where
+   * the phone was.
+   *
+   * The server decides who to mail. It reads the address off the verified ID
+   * token, never from anything sent here, which is why this request carries no
+   * recipient at all.
+   */
+  async function keep() {
+    if (!found) return;
+
+    if (!signedIn()) {
+      // Reachable if the token expired while the camera was running.
+      paintGate();
+      fail("Sign in first — the report goes to your inbox.");
+      return;
+    }
+    if (!found.where) {
+      fail(
+        "No location for that one, so there is nothing a crew could act on. " +
+          "Allow location and try the next find."
+      );
+      return;
+    }
+
+    // Freeze the countdown: this is somebody deciding, and having the find
+    // expire out from under an in-flight upload would be absurd.
+    clearHold();
+    reportButton.disabled = true;
+    reportButton.textContent = "Saving…";
+    status.textContent = "Working out whose road this is…";
+
+    try {
+      const image = await burnBox(found);
+      if (!image) {
+        fail("Could not render the still.");
+        return;
+      }
+
+      const form = new FormData();
+      form.append(
+        "meta",
+        JSON.stringify({
+          lat: found.where.lat,
+          lng: found.where.lng,
+          hazard: found.result.hazard,
+          severity: found.result.severity,
+          confidence: found.result.confidence,
+          description: found.result.description,
+          model: found.result.model,
+          box: found.result.box || null,
+          box_measured: Boolean(found.result.box_measured),
+        })
+      );
+      form.append("image", image, "road-hazard.jpg");
+
+      const response = await auth.fetch("/api/incidents", { method: "POST", body: form });
+      if (!response.ok) {
+        fail(await describe(response));
+        return;
+      }
+
+      const saved = await response.json();
+      errorSlot.hidden = true;
+      const note = saved.emailed_to
+        ? `Saved, and sent to ${saved.emailed_to}.`
+        : "Saved. The mail could not be sent — it is on your incidents page.";
+
+      found = null;
+      reportButton.hidden = true;
+      if (shareButton) shareButton.hidden = true;
+      clearBox();
+      status.textContent = note;
+      // Carries the confirmation through, rather than replacing it with
+      // "Looking…" the instant it appears.
+      resumeLooking(note);
+    } catch (err) {
+      fail(`Could not save that: ${(err && err.message) || err}`);
+    } finally {
+      reportButton.disabled = false;
+      if (found) {
+        // It did not save. Put the find back on the clock rather than leaving
+        // it pinned and the camera paused indefinitely -- a retry is one press
+        // away, and if nobody retries it expires like any other and looking
+        // picks back up. `beginHold` writes the button label itself.
+        beginHold();
+      } else {
+        reportButton.textContent = "Report it";
+      }
+    }
+  }
 
   /* Hand the finding to whatever the phone uses to send things.
 
@@ -255,10 +486,14 @@
      there. `mailto:` cannot attach anything, ever, so on desktop the text goes
      and the picture does not; the draft says so rather than pretending.
 
-     Nothing is sent from here. The last action is a person's. */
+     Nothing is sent from here, and nothing is stored. The last action is a
+     person's. This is the secondary path -- `keep` is the button, and it saves
+     and mails. This one is for handing the picture somewhere yourself. */
   async function report() {
     if (!found) return;
-    reportButton.disabled = true;
+    // Somebody is deciding, so stop the clock. Restored either way in `finally`.
+    clearHold();
+    if (shareButton) shareButton.disabled = true;
     status.textContent = "Working out whose road this is…";
 
     // Ask the server who owns the road at these coordinates and how it words a
@@ -336,7 +571,11 @@
         fail(`Could not hand that over: ${(err && err.message) || err}`);
       }
     } finally {
-      reportButton.disabled = false;
+      if (shareButton) shareButton.disabled = false;
+      // Sharing does not consume the find -- somebody may well want to save it
+      // too. Put it back on the clock so it expires like any other rather than
+      // pinning the camera indefinitely.
+      if (found) beginHold();
     }
   }
 

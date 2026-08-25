@@ -58,6 +58,31 @@ a:hover { color: var(--rust); }
   font-size: 11px;
   color: var(--muted);
 }
+/* Sits after the status line rather than taking its `margin-left: auto`, so
+   the two read as one right-hand cluster instead of fighting for the edge. */
+.nav__auth {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.nav__who { display: inline-flex; align-items: center; gap: 10px; }
+.nav__signin,
+.nav__signout {
+  font: inherit;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.nav__signin:hover,
+.nav__signout:hover { border-color: var(--ink); }
+.nav__signin[disabled] { opacity: 0.5; cursor: progress; }
+
 .dot {
   width: 6px; height: 6px;
   border-radius: 50%;
@@ -642,7 +667,11 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 }
 
 /* --- the dark library section --- */
-.library { background: var(--syn-bg); color: var(--syn-text); padding: 46px 0 52px; margin-top: 44px; }
+/* The top spacing is padding rather than margin on purpose. As a margin it sat
+   *outside* the dark background, so whatever preceded this section showed
+   through as a 44px paper-coloured bar -- which is exactly what happened when
+   the demo blocks between here and the stat band were removed. */
+.library { background: var(--syn-bg); color: var(--syn-text); padding: 90px 0 52px; }
 .library__eyebrow {
   margin: 0 0 10px; font-family: var(--mono); font-size: 10.5px;
   letter-spacing: 0.16em; text-transform: uppercase; color: var(--syn-mute);
@@ -1286,3 +1315,315 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
   font-family: var(--mono); font-size: 10.5px; line-height: 1.65; color: var(--muted);
 }
 .wherecard__note { margin: 12px 0 0; }
+
+/* ------------------------------------------------- sign-in gates + incidents */
+
+/* Shown in place of the camera controls when accounts are configured and
+   nobody is signed in. Same treatment on both pages that use one. */
+.dash__gate,
+.inc__gate {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 26px;
+  margin: 0 0 24px;
+  background: var(--paper-2, #F3F2EC);
+}
+.dash__gate-lead,
+.inc__gate-lead {
+  margin: 0 0 8px;
+  font-family: var(--display), var(--sans);
+  font-weight: 700;
+  font-size: 21px;
+  letter-spacing: -0.01em;
+}
+.dash__gate-note {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 52ch;
+}
+.inc__gate .btn { margin-top: 6px; }
+
+/* The secondary action next to "Report it". Reporting saves and mails; this
+   only hands the picture to the phone, so it reads quieter. */
+.dash__share {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--rule);
+}
+.dash__share:hover { border-color: var(--ink); color: var(--ink); }
+
+.inc { padding: 8px 0 60px; }
+.inc__head { max-width: 60ch; margin: 0 0 32px; }
+.inc__head h1 {
+  font-family: var(--display), var(--sans);
+  font-weight: 800;
+  font-size: 40px;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0 0 14px;
+}
+.inc__lede { font-size: 16px; line-height: 1.6; color: var(--ink-2); margin: 0; }
+.inc__loading, .inc__empty {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.inc__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 26px;
+}
+.inc__card {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  padding: 0 0 18px;
+  overflow: hidden;
+}
+/* The positioning context the box overlay is placed against. Fractions from the
+   model are percentages of this element, exactly as on the live dashcam. */
+.inc__media { position: relative; line-height: 0; background: var(--ink); }
+.inc__media img { width: 100%; height: auto; display: block; }
+.inc__box {
+  position: absolute;
+  border: 2px solid var(--amber);
+  border-radius: 2px;
+  pointer-events: none;
+}
+/* Dashed when the coordinates were approximated rather than measured -- the
+   same distinction the case pages draw. */
+.inc__box--soft { border-style: dashed; }
+.inc__box-label {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  transform: translateY(-100%);
+  background: var(--amber);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.inc__hazard {
+  margin: 18px 18px 8px;
+  font-family: var(--display), var(--sans);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+}
+.inc__desc {
+  margin: 0 18px 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+.inc__facts {
+  margin: 0 18px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  font-size: 12.5px;
+}
+.inc__facts dt {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  align-self: baseline;
+}
+.inc__facts dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.inc__report { margin: 16px 18px 0; }
+.inc__report summary {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.inc__report summary:hover { color: var(--ink); }
+.inc__body {
+  margin: 12px 0 0;
+  padding: 14px;
+  background: var(--paper-2, #F3F2EC);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+
+/* --------------------------------------- the two modes + their dialogs */
+
+.mode { margin-top: 46px; }
+.mode:first-of-type { margin-top: 34px; }
+.mode__head {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding-top: 26px;
+  margin-bottom: 24px;
+  max-width: 62ch;
+}
+.mode__title {
+  font-family: var(--display), var(--sans);
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: -0.02em;
+  color: var(--syn-text);
+  margin: 0 0 10px;
+}
+.mode__lede {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--syn-dim);
+}
+.mode__lede strong { color: var(--syn-text); }
+.mode__empty { font-family: var(--mono); font-size: 12px; color: var(--syn-dim); }
+
+/* The action block on a card. Inset to 16px like `.card .gen`, `.card h3` and
+   `.card__meta` -- the card itself has no horizontal padding, so anything that
+   does not set its own margin sits flush against the border.
+
+   Namespaced `.act` rather than `.run`, which already belongs to the case
+   page's analysis section: `.run { margin: 0 0 34px }` was landing on this and
+   pushing the footer down. */
+.card .act { display: block; margin: 0 16px 12px; }
+.card .act .btn { width: 100%; }
+/* The handover reads quieter than the run: one spends Vertex quota and sends
+   mail, the other opens a dialog. `.btn` alone is the light-background amber,
+   which on a dark card is both loud and off-palette. */
+.act--hand .btn {
+  background: transparent;
+  color: var(--syn-text);
+  border: 1px solid var(--syn-line-2, var(--syn-line));
+  border-radius: 3px;
+  box-shadow: none;
+  font-size: 12.5px;
+  padding: 7px 12px;
+}
+.act--hand .btn:hover:not([disabled]) {
+  border-color: var(--syn-accent);
+  color: var(--syn-accent);
+  transform: none;
+}
+/* The action block renders in two places on two backgrounds: the library cards
+   are dark, the case page is paper. So the defaults are the paper ones and the
+   card overrides them -- `--syn-dim` and `--green-soft` are chosen to sit on
+   `--syn-bg` and are close to invisible on white. */
+.act__cost {
+  margin: 8px 0 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.card .act__cost { color: var(--syn-dim); }
+
+.act__stages { list-style: none; margin: 14px 0 0; padding: 0; }
+
+.act__outcome {
+  margin: 12px 0 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--green);
+}
+.card .act__outcome { color: var(--green-soft); }
+.act__outcome--bad { color: var(--rust); }
+.card .act__outcome--bad { color: var(--amber); }
+
+/* ---------------------------------------------------------- dialogs */
+.modal {
+  border: none;
+  border-radius: 12px;
+  padding: 0;
+  max-width: 620px;
+  width: calc(100% - 40px);
+  background: var(--paper);
+  color: var(--ink);
+}
+.modal::backdrop { background: rgba(14, 17, 22, 0.62); }
+.modal__box { padding: 30px; }
+.modal__eyebrow {
+  margin: 0 0 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.modal__title {
+  margin: 0 0 12px;
+  font-family: var(--display), var(--sans);
+  font-weight: 800;
+  font-size: 25px;
+  letter-spacing: -0.02em;
+}
+.modal__lede {
+  margin: 0 0 14px;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.modal__lede--quiet { font-size: 13px; color: var(--muted); }
+.modal__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 22px;
+}
+/* The dismissal sits left of the actions, so the primary button is never the
+   one a reflex press lands on. */
+.modal__actions .btn--primary { margin-left: auto; }
+
+.hand__facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 18px 0;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--paper-2, #F3F2EC);
+  font-size: 13px;
+}
+.hand__facts dt {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hand__facts dd { margin: 0; overflow-wrap: anywhere; }
+.hand__subject {
+  margin: 0 0 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.hand__body {
+  margin: 0;
+  padding: 16px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.hand__caveat {
+  margin: 16px 0 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.65;
+  color: var(--muted);
+}
