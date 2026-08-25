@@ -48,6 +48,8 @@ HAZARD_COLORS = {
     HazardType.INFRASTRUCTURE_DAMAGE: (150, 148, 140),
     HazardType.ANIMAL: (122, 96, 68),
     HazardType.PEDESTRIAN_ON_HIGHWAY: (200, 90, 70),
+    # Near-black: a pothole reads as an absence of surface, not an object on it.
+    HazardType.POTHOLE: (24, 22, 21),
 }
 
 # Where in the frame each lane sits, as a fraction of width.

@@ -19,6 +19,19 @@ confidence rather than guessing higher.**
   its own is `debris`, not a closure.
 - `flooding` — standing water on the carriageway
 - `infrastructure_damage` — damaged guardrail, a knocked-down sign, a misaligned signal head
+- `pothole` — a cavity in the road surface itself: a broken-out hole with visible
+  depth and a ragged edge. This is damage *to* the carriageway, so it is not
+  `debris` (an object lying on top of it) and not `infrastructure_damage` (which
+  is roadside hardware). A dark patch with no visible depth or broken edge is a
+  stain or a shadow, not a pothole — say so and report low confidence.
+
+  **Box the hole, not the damage around it.** Potholes sit in worn asphalt, so
+  there is usually cracking, patching and sealed tar nearby, and it is often the
+  larger and darker feature. None of it is the hazard: a crew is being sent to
+  the opening a wheel would drop into, and a box drawn around several metres of
+  spidered surface does not tell them where that is. If several holes are open,
+  box the one a driver reaches first. If the surface is cracked but nothing has
+  broken out of it, that is not a pothole at all.
 - `animal` — an animal on or beside the carriageway
 - `pedestrian_on_highway` — a person on foot on a road where that is not expected
 

@@ -339,3 +339,97 @@ class InspectJobs:
             self._jobs.pop(job.id, None)
             if self._by_case.get(job.case_id) == job.id:
                 self._by_case.pop(job.case_id, None)
+
+
+# ------------------------------------------------------------ demo send jobs
+
+
+@dataclass
+class DemoSendJob:
+    """The demonstration run that actually transmits.
+
+    Same polling contract as `DrillJob`, and deliberately its own type: this is
+    the only job in the system with a side effect outside the process, and
+    sharing a class with the drill would make that difference invisible at the
+    call site.
+    """
+
+    id: str
+    prompt: str
+    state: str = "running"  # running | done | failed
+    started_at: float = field(default_factory=time.monotonic)
+    finished_at: float | None = None
+    result: dict | None = None
+    error: str | None = None
+
+    @property
+    def elapsed(self) -> float:
+        end = self.finished_at if self.finished_at is not None else time.monotonic()
+        return end - self.started_at
+
+    def as_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "prompt": self.prompt,
+            "state": self.state,
+            "elapsed": round(self.elapsed, 1),
+            "result": self.result,
+            "error": self.error,
+        }
+
+
+class DemoSendJobs:
+    """In-process registry of demonstration sends."""
+
+    def __init__(self) -> None:
+        self._jobs: dict[str, DemoSendJob] = {}
+
+    def get(self, job_id: str) -> DemoSendJob | None:
+        return self._jobs.get(job_id)
+
+    def start(self, container, prompt: str, *, to: str, full: bool = False) -> DemoSendJob:
+        job = DemoSendJob(id=uuid.uuid4().hex[:12], prompt=prompt.strip())
+        self._jobs[job.id] = job
+        self._forget_old()
+        asyncio.create_task(self._run(container, job, to, full))
+        return job
+
+    async def _run(self, container, job: DemoSendJob, to: str, full: bool) -> None:
+        from road_cleaner.pipeline.demo_send import DemoSend, DemoSendError
+
+        async def on_progress(result) -> None:
+            job.result = result.as_dict()
+
+        try:
+            outcome = await DemoSend(container).run(
+                job.prompt, to=to, full=full, on_progress=on_progress
+            )
+        except asyncio.CancelledError:
+            job.state = "failed"
+            job.error = "The server stopped before the demonstration finished."
+            job.finished_at = time.monotonic()
+            raise
+        except DemoSendError as exc:
+            job.state, job.error = "failed", str(exc)
+            log.warning("Demo send failed", extra={"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001 - never take the app down
+            job.state, job.error = "failed", f"Unexpected error: {exc}"
+            log.exception("Demo send crashed", extra={"prompt": job.prompt})
+        else:
+            job.result = outcome.as_dict()
+            # `done` means the run finished, not that the mail left. Whether it
+            # was actually delivered is `result.sent`, and the page reads that
+            # rather than the job state -- a send that failed still produces a
+            # complete run worth showing.
+            job.state = "done"
+            job.error = outcome.error
+        finally:
+            job.finished_at = time.monotonic()
+
+    def _forget_old(self) -> None:
+        if len(self._jobs) <= _MAX_REMEMBERED:
+            return
+        finished = [j for j in self._jobs.values() if j.state != "running"]
+        finished.sort(key=lambda j: j.finished_at or 0.0)
+        for job in finished[: len(self._jobs) - _MAX_REMEMBERED]:
+            self._jobs.pop(job.id, None)

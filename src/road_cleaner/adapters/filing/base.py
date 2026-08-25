@@ -108,12 +108,20 @@ def guard_live_send(destination: str, channel: str) -> None:
     """
     from road_cleaner.config import get_settings
 
-    if get_settings().allow_live_filing:
+    settings = get_settings()
+    # Named explicitly, one address at a time. Checked before the global switch
+    # so the demo path needs neither DRY_RUN=false nor ALLOW_LIVE_FILING=true --
+    # which is the point: proving the last step is real should not also arm the
+    # seventy-one agencies nobody meant to write to.
+    if destination and destination.strip().lower() in settings.live_filing_allowed:
+        return
+    if settings.allow_live_filing:
         return
     raise FilingError(
         f"Refusing to transmit to {destination or 'an agency'} over {channel}. "
         "Real agency endpoints are configured, so sending needs ALLOW_LIVE_FILING=true "
-        "as well as DRY_RUN=false. Composing the report is unaffected."
+        "as well as DRY_RUN=false, or the address named in LIVE_FILING_ALLOWLIST. "
+        "Composing the report is unaffected."
     )
 
 

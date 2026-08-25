@@ -31,6 +31,8 @@ SERVICE_CODES: dict[HazardType, str] = {
     HazardType.STALLED_VEHICLE: "abandoned-vehicle",
     HazardType.ANIMAL: "animal-control",
     HazardType.PEDESTRIAN_ON_HIGHWAY: "traffic-hazard",
+    # The one service code nearly every GeoReport v2 city publishes by name.
+    HazardType.POTHOLE: "pothole",
 }
 
 

@@ -30,6 +30,7 @@ HAZARD_TITLES: dict[HazardType, str] = {
     HazardType.INFRASTRUCTURE_DAMAGE: "Damaged roadside hardware",
     HazardType.ANIMAL: "Animal on the shoulder",
     HazardType.PEDESTRIAN_ON_HIGHWAY: "Someone walking on the highway",
+    HazardType.POTHOLE: "Pothole in a travel lane",
 }
 
 # What the hazard looks like in a frame -- the observable, not the conclusion.
@@ -41,6 +42,7 @@ HAZARD_OBSERVATIONS: dict[HazardType, str] = {
     HazardType.INFRASTRUCTURE_DAMAGE: "roadside hardware bent out of shape",
     HazardType.ANIMAL: "something animal-shaped off the travel lanes",
     HazardType.PEDESTRIAN_ON_HIGHWAY: "a person on foot where no one should be",
+    HazardType.POTHOLE: "a cavity in the road surface itself",
 }
 
 STATE_POSSESSIVE: dict[str, str] = {
@@ -207,10 +209,10 @@ def report_body(
 
     Deliberately dry and factual -- the wry voice belongs on our dashboard, not
     in somebody's maintenance queue. States what was seen, where and when, then
-    gets out of the way. Always says it was filed by a machine and always offers
-    a human reply path.
+    gets out of the way. Always says it was filed by a machine, and does not
+    offer anything it cannot deliver.
 
-    Three things this used to say and no longer does, all of them untrue:
+    Four things this used to say and no longer does, all of them untrue:
 
     * **A camera id.** Fine for a fixed CCTV; meaningless for a phone on a
       windscreen, which is now where most of these come from.
@@ -222,6 +224,10 @@ def report_body(
       email channel silently attaches nothing when the blob store is remote. The
       sentence now describes what is really enclosed, and links the evidence
       still when there is a link to give instead.
+    * **"Reply to this thread and a person will see it."** Nobody is on the
+      other end of it. A maintenance desk that took the invitation seriously
+      would write back and hear nothing, which is a worse first contact than
+      never having asked them to.
 
     `location` is passed in rather than rebuilt from a camera so that this line
     and the `route` field of the form carry the same string. They used to be
@@ -251,7 +257,13 @@ def report_body(
             detection.description.strip(),
             "",
             *([*enclosure, ""] if enclosure else []),
-            "Filed automatically by Road Cleaner. Reply to this thread and a person will see it.",
+            # The machine disclosure stays; the promise that followed it does not.
+            # "Reply to this thread and a person will see it" was an undertaking
+            # nobody is on the other end of -- no inbox here is monitored, and a
+            # maintenance desk that replied would be answered by silence. That is
+            # worse than offering nothing, and it is the same class of untruth as
+            # the attachments this report used to claim it carried.
+            "Filed automatically by Road Cleaner.",
         ]
     )
 

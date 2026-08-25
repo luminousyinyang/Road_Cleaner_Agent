@@ -90,6 +90,32 @@ class Settings(BaseSettings):
     # that. Both must be set before anything is transmitted; the channels check
     # it themselves rather than trusting callers.
     allow_live_filing: bool = Field(default=False, alias="ALLOW_LIVE_FILING")
+    # A narrow hole in the wall above, for demonstrating that the last step is
+    # real without arming the other seventy-one agencies to do it.
+    #
+    # `ALLOW_LIVE_FILING=true` is all-or-nothing, and "all" includes
+    # contact@dot.ga.gov and info@azdot.gov -- two genuinely deliverable
+    # addresses in the registry. Sending one honest end-to-end report should not
+    # require unlocking those, so this names recipients one at a time instead.
+    # Comma-separated; matched case-insensitively against the destination.
+    #
+    # This only ever *permits* an address that is already refused. It cannot
+    # widen anything: an address not on the list is exactly as blocked as before.
+    live_filing_allowlist: str = Field(default="", alias="LIVE_FILING_ALLOWLIST")
+    # Who the demonstration send goes to. Separate from the allowlist above so
+    # that being *reachable* and being *the demo recipient* stay two decisions:
+    # this address still has to appear in the allowlist to receive anything, and
+    # the button stays hidden until both are set.
+    demo_send_to: str = Field(default="", alias="DEMO_SEND_TO")
+
+    @property
+    def live_filing_allowed(self) -> frozenset[str]:
+        """The allowlist as addresses, lowercased and stripped of blanks."""
+        return frozenset(
+            entry.strip().lower()
+            for entry in self.live_filing_allowlist.split(",")
+            if entry.strip()
+        )
     # Where this deployment answers, e.g. https://road-cleaner-....run.app
     #
     # Only used to turn a site-relative evidence path into a link a road crew can

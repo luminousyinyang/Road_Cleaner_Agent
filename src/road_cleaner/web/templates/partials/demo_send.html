@@ -1,0 +1,69 @@
+{# The one run that finishes.
+
+   Everything else on this site composes a report and stops, which is the right
+   default and also the reason a fair viewer would ask whether the last step
+   works at all. This is the answer: the same pipeline, and then a real message
+   over SMTP with the evidence still attached.
+
+   It renders only when the deployment is configured for it, so the control can
+   never promise a send it cannot make. See `/api/demo/send` (GET). #}
+
+<section class="drill demo-send" id="demo-send" hidden data-demo-send>
+  <div class="drill__head">
+    <div>
+      <p class="library__eyebrow">Live send · the last step</p>
+      <h2>Watch it actually send one.</h2>
+      <p class="drill__lede">
+        The drill above stops at a finished report, because the road it invented
+        has no maintenance desk. This runs the same pipeline — the same footage,
+        the same two vision calls, the same gate, the same jurisdiction rules —
+        and then does the part nothing else here does: it hands the message to a
+        mail server and it leaves.
+      </p>
+      <p class="drill__lede">
+        It still works out which agency owns that stretch, and the mail says so.
+        What it will not do is send it to them. The report goes to
+        <strong class="demo-send__to" id="demo-recipient">the demonstration inbox</strong>,
+        which is the only address this deployment is permitted to write to.
+      </p>
+    </div>
+  </div>
+
+  <p class="drill__lede demo-send__footage" id="demo-footage"></p>
+
+  <form class="drill__form" id="demo-form" autocomplete="off">
+    <input class="drill__input" id="demo-prompt" name="prompt" maxlength="400"
+           placeholder="a deep pothole in the right lane of I-75 near Atlanta"
+           value="a deep pothole in the right lane of I-75 near Atlanta">
+    <button class="btn btn--syn" id="demo-run" type="submit">Run it and send</button>
+  </form>
+
+  <ol class="drill__stages" id="demo-stages" hidden>
+    {% for key, label in demo_stages %}
+    <li class="stage" data-stage="{{ key }}">
+      <span class="stage__dot"></span>
+      <span class="stage__label">{{ label }}</span>
+      <span class="stage__detail"></span>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <p class="drill__error" id="demo-error" hidden></p>
+
+  <div class="drill__out" id="demo-out" hidden>
+    <div class="drill__frames" id="demo-frames"></div>
+
+    <div class="draft" id="demo-draft">
+      <div class="draft__head">
+        <span class="draft__label">The report it sent</span>
+        <span class="draft__case" id="demo-case"></span>
+      </div>
+      <p class="draft__subject" id="demo-subject"></p>
+      <pre class="draft__body" id="demo-body"></pre>
+
+      <div class="draft__send">
+        <p class="draft__why" id="demo-outcome"></p>
+      </div>
+    </div>
+  </div>
+</section>

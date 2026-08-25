@@ -30,12 +30,13 @@ from road_cleaner.config import MediaProviderKind, Settings, get_settings
 from road_cleaner.container import build_container
 from road_cleaner.domain.models import Camera, Frame
 from road_cleaner.logging import configure_logging, get_logger
+from road_cleaner.pipeline.demo_send import SEND_STAGE as DEMO_SEND_STAGE
 from road_cleaner.pipeline.drill import STAGES as DRILL_STAGES
 from road_cleaner.ports.blob_store import BlobNotFoundError
 from road_cleaner.ports.media import is_synthetic_key
 from road_cleaner.ports.vision import VisionUnavailableError
 from road_cleaner.web import serializers as S
-from road_cleaner.web.jobs import DrillJobs, InspectJobs, RenderJobs
+from road_cleaner.web.jobs import DemoSendJobs, DrillJobs, InspectJobs, RenderJobs
 from road_cleaner.web.serializers import when
 
 # Offered as one-click starting points. Each is a different hazard class, so a
@@ -167,6 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.renders = RenderJobs()
         app.state.drills = DrillJobs()
         app.state.inspections = InspectJobs()
+        app.state.demo_sends = DemoSendJobs()
         try:
             yield
         finally:
@@ -231,6 +233,8 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 "veo_model": c.settings.veo_model,
                 "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
                 "stages": DRILL_STAGES,
+                # The drill's six plus the one it never takes.
+                "demo_stages": [*DRILL_STAGES, DEMO_SEND_STAGE],
                 "examples": DRILL_EXAMPLES,
             },
         )
@@ -421,6 +425,91 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         job = request.app.state.drills.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="No such drill")
+        return job.as_dict()
+
+    # ------------------------------------------------- the demonstration send
+    #
+    # The only route in this application that causes a message to leave the
+    # building. Everything it needs is configuration -- the recipient, that
+    # recipient being allowlisted, and SMTP -- and if any of it is missing the
+    # route says so plainly rather than starting work it cannot finish.
+
+    def _demo_recipient(c) -> str:
+        """The configured recipient, or a 409 explaining exactly what is unset."""
+        address = (c.settings.demo_send_to or "").strip()
+        if not address:
+            raise HTTPException(
+                status_code=409,
+                detail="DEMO_SEND_TO is not set, so there is no demonstration recipient.",
+            )
+        if address.lower() not in c.settings.live_filing_allowed:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{address} is not in LIVE_FILING_ALLOWLIST. Both are required: "
+                    "one names the recipient, the other permits sending to it."
+                ),
+            )
+        if not c.settings.smtp_host:
+            raise HTTPException(
+                status_code=409, detail="SMTP_HOST is not configured, so nothing can be sent."
+            )
+        return address
+
+    @app.get("/api/demo/send")
+    async def demo_send_ready(request: Request):
+        """Whether the live demonstration is configured. Drives the button.
+
+        A GET so the page can ask before showing a control that promises to send
+        real mail -- offering it and then failing on a missing setting is worse
+        than not offering it.
+        """
+        c = request.app.state.container
+        address = (c.settings.demo_send_to or "").strip()
+        ready = bool(
+            address
+            and address.lower() in c.settings.live_filing_allowed
+            and c.settings.smtp_host
+        )
+        return {
+            "ready": ready,
+            # Shown on the button so nobody can click it without knowing where
+            # it goes. Never the allowlist: that is configuration, not a promise.
+            "recipient": address if ready else None,
+            # Whether there will be real footage. With Veo off the run falls back
+            # to flat scene renders, and the stills a report encloses are
+            # coloured rectangles -- worth saying on the page rather than letting
+            # somebody discover it in their inbox.
+            "veo": c.settings.media_provider == MediaProviderKind.VERTEX,
+        }
+
+    @app.post("/api/demo/send")
+    async def start_demo_send(request: Request):
+        """Run the real pipeline and actually email the report. Returns a job."""
+        body = await request.json()
+        prompt = str(body.get("prompt", "")).strip()
+        full = bool(body.get("full", False))
+        if not prompt:
+            raise HTTPException(status_code=422, detail="Describe a hazard first.")
+        if len(prompt) > 400:
+            raise HTTPException(status_code=422, detail="Keep it under 400 characters.")
+
+        c = request.app.state.container
+        address = _demo_recipient(c)
+        if full and c.settings.media_provider != MediaProviderKind.VERTEX:
+            raise HTTPException(
+                status_code=409,
+                detail="Video generation is off. Set MEDIA_PROVIDER=vertex to enable it.",
+            )
+
+        job = request.app.state.demo_sends.start(c, prompt, to=address, full=full)
+        return JSONResponse(job.as_dict(), status_code=202)
+
+    @app.get("/api/demo/send/{job_id}")
+    async def demo_send_status(request: Request, job_id: str):
+        job = request.app.state.demo_sends.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="No such demonstration run")
         return job.as_dict()
 
     @app.post("/api/cases/{case_id}/location")

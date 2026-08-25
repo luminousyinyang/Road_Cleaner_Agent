@@ -34,6 +34,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from road_cleaner.adapters.camera.scene import SceneSpec, phash, render
@@ -71,6 +72,21 @@ STAGES: list[tuple[str, str]] = [
 # plausible gap between two camera polls.
 OBSERVATION_GAP = timedelta(minutes=4)
 
+# Stills cut from a generated clip before two are chosen. Five rather than two so
+# the ends -- hazard too distant, hazard already passed -- can be discarded and
+# the pair still comes from far enough apart to be two genuine looks.
+CLIP_SAMPLES = 5
+
+# Where a reusable clip lives, one per hazard type.
+#
+# A drill renders fresh footage every run, which is the point of a drill. A demo
+# is not a drill: it is the same scenario shown repeatedly, and paying Veo for a
+# new render each time buys nothing but latency and a rate limit at the worst
+# possible moment. So the first run for a hazard renders and keeps the clip here,
+# and every run after it replays that one. The Gemini half still runs in full --
+# it is the footage that is reused, not the analysis of it.
+DEMO_CLIP_PREFIX = f"{SYNTHETIC_PREFIX}_demo/"
+
 _SIM_PREFIX = "SIM"
 
 
@@ -98,6 +114,11 @@ class DrillResult:
     prompt: str = ""
     spec: dict[str, Any] = field(default_factory=dict)
     frame_urls: list[str] = field(default_factory=list)
+    # The same stills with the detection box burned in, one per frame the hazard
+    # was found in. Separate from `frame_urls` because they are not
+    # interchangeable: those are what the model was shown, these are what it
+    # concluded, and a report encloses the second.
+    evidence_urls: list[str] = field(default_factory=list)
     clip_url: str | None = None
     detections: list[dict[str, Any]] = field(default_factory=list)
     gate_decision: str | None = None
@@ -126,7 +147,9 @@ Reply with ONLY a JSON object, no prose and no code fence, with exactly these ke
   "county"       a real county in that state
   "place"        a short landmark or interchange name, lowercase
   "hazard_type"  one of: debris, stalled_vehicle, unreported_closure, flooding,
-                 infrastructure_damage, animal
+                 infrastructure_damage, animal, pothole
+                 Use "pothole" only for a hole in the road surface itself, not
+                 for an object lying on it and not for roadside hardware.
   "lane_position" one of: lane_1, lane_2, lane_3, left_shoulder, right_shoulder
   "severity"     one of: low, medium, high, critical
   "description"  one factual sentence describing what is on the road, as a
@@ -284,11 +307,17 @@ class Drill:
 
     # ------------------------------------------------------------- the run
     async def run(
-        self, text: str, *, full: bool = False, pin=None, on_progress=None
+        self, text: str, *, full: bool = False, pin=None, on_progress=None,
+        reuse_clip: bool = False,
     ) -> DrillResult:
         """Drive the pipeline end to end. `full` adds a Veo render.
 
         `on_progress(result)` is called after each stage so a UI can stream.
+
+        `reuse_clip` keeps and replays the footage for a hazard rather than
+        rendering it every time. Off for a drill, where fresh footage is the
+        exercise; on for the demonstration, which shows one scenario repeatedly
+        and should not bill a render -- or risk a rate limit -- per click.
         """
         stages = [StageReport(k, label) for k, label in STAGES]
         result = DrillResult(stages=stages, prompt=text.strip())
@@ -358,19 +387,36 @@ class Drill:
         await advance("stage", f"2 frames, {int(OBSERVATION_GAP.total_seconds() // 60)} min apart")
 
         if full:
-            await self._render_clip(result, spec, camera, case_id)
+            # A Veo render used to be decorative: the clip played on the page
+            # while detection went on reading the flat scene renders above, so
+            # the "evidence" a report carried was two coloured rectangles. When
+            # there is real footage, the stills the model looks at -- and the
+            # ones that end up attached to a report -- come out of it.
+            from_clip = await self._render_clip(
+                result, spec, camera, case_id, frames, reuse=reuse_clip
+            )
+            if from_clip:
+                frames = from_clip
 
         # --- 3. detect ---------------------------------------------------
         await begin("detect")
         detections: list[Detection] = []
+        # Frames that actually produced a detection, so the evidence a report
+        # encloses is the stills the hazard was found in.
+        kept: list[tuple[Frame, bytes]] = []
+        looked = len(frames)
         for frame, image in frames:
             detection = await self.c.vision.analyze(image, frame, camera)
             if detection is None:
-                raise DrillError(
-                    "The vision model found no hazard in the staged frame. "
-                    "Try describing the hazard more plainly."
-                )
+                # A miss is not a failure. Real footage of a real approach has
+                # frames where the hazard is a hundred metres off or already
+                # under the car, and requiring every still to find it meant one
+                # unlucky sample killed a run in which three others saw it
+                # plainly. The gate below still decides whether what was found
+                # is enough.
+                continue
             await repo.save_detection(detection)
+            kept.append((frame, image))
             detections.append(detection)
             result.detections.append(
                 {
@@ -382,9 +428,20 @@ class Drill:
                     "at": frame.captured_at.strftime("%H:%M:%S"),
                 }
             )
+        # Two independent looks is what the gate is built around, and no amount
+        # of resampling substitutes for it. One detection is a single sighting;
+        # none means the model genuinely did not find the hazard described.
+        if len(detections) < 2:
+            raise DrillError(
+                f"The vision model found the hazard in {len(detections)} of "
+                f"{looked} stills, and two independent sightings are needed "
+                "before anything can be reported. Try describing it more plainly."
+            )
+        frames = kept
+        await self._box_stills(result, case_id, kept, detections)
         await advance(
             "detect",
-            f"{len(detections)} independent calls · "
+            f"found in {len(detections)} of {looked} stills · "
             + " and ".join(f"{d.confidence:.2f}" for d in detections),
         )
 
@@ -437,10 +494,27 @@ class Drill:
         return result
 
     # ------------------------------------------------------------- helpers
-    async def _render_clip(self, result, spec, camera, case_id) -> None:
-        """Optional Veo render. Never blocks the pipeline if it fails."""
+    async def _render_clip(
+        self, result, spec, camera, case_id, staged, reuse: bool = False
+    ) -> list | None:
+        """Optional Veo render. Never blocks the pipeline if it fails.
+
+        Returns stills cut from the generated clip, to be analysed in place of
+        the flat scene renders -- or None, meaning carry on with those. Every
+        failure here is a None: a drill that dies because ffmpeg is missing or a
+        render timed out is worse than a drill that falls back to the renders it
+        already has, which is what it did before Veo existed.
+        """
         from road_cleaner.adapters.media.scenario_prompt import scenario_prompt
         from road_cleaner.ports.media import MediaUnavailableError
+
+        # Kept footage, if this hazard has been rendered before and the caller
+        # asked to reuse it. Checked before anything is billed.
+        kept_key = f"{DEMO_CLIP_PREFIX}{spec['hazard_type']}.mp4"
+        if reuse and await self.c.media_blobs.exists(kept_key):
+            log.info("Reusing kept demo clip", extra={"key": kept_key})
+            result.clip_url = f"/media/{kept_key}"
+            return await self._stills_from(result, kept_key, camera, case_id, staged)
 
         stub = Case(
             id=case_id, camera_id=camera.id, state=camera.state,
@@ -455,8 +529,100 @@ class Drill:
             )
         except MediaUnavailableError as exc:
             log.warning("Drill clip failed", extra={"case": case_id, "error": str(exc)})
-            return
+            return None
         result.clip_url = f"/media/{clip.key}"
+        if reuse:
+            # Keep it, so the next run of this scenario costs nothing. Failing
+            # to keep it is not worth losing the render over -- the run has its
+            # footage either way, and the next one simply pays again.
+            try:
+                await self.c.media_blobs.put(
+                    kept_key, await self.c.media_blobs.get(clip.key), content_type="video/mp4"
+                )
+            except Exception as exc:  # noqa: BLE001 - a cache miss is not a failure
+                log.warning("Could not keep the demo clip", extra={"error": str(exc)})
+        return await self._stills_from(result, clip.key, camera, case_id, staged)
+
+    async def _box_stills(self, result, case_id, kept, detections) -> None:
+        """Burn each detection's box onto the still it came from.
+
+        The case page draws boxes over the video with CSS, which is right there
+        and worth nothing the moment a picture leaves the page -- an emailed
+        still with no box asks a maintenance desk to find the hazard themselves,
+        in a photograph of a road that looks like every other road. The box is
+        the difference between a picture and evidence.
+
+        Never fatal. A run that detected, gated and composed correctly should not
+        be lost because Pillow could not write a rectangle; the report still has
+        the unboxed frames to enclose.
+        """
+        from road_cleaner.adapters.media.annotate import draw_box
+
+        for (frame, image), detection in zip(kept, detections, strict=True):
+            try:
+                boxed = draw_box(image, detection.box, detection.box_label)
+            except Exception as exc:  # noqa: BLE001 - a rectangle must not fail a run
+                log.warning("Could not box a drill still", extra={"error": str(exc)})
+                continue
+            key = f"{SYNTHETIC_PREFIX}{case_id}/boxed-{frame.blob_key.rsplit('/', 1)[-1]}"
+            await self.c.media_blobs.put(key, boxed, content_type="image/jpeg")
+            result.evidence_urls.append(f"/media/{key}")
+
+    async def _stills_from(self, result, clip_key, camera, case_id, staged) -> list | None:
+        """Two stills out of the clip, far enough apart to be separate looks.
+
+        The moments are inherited from the staged frames rather than invented,
+        because the gate wants two observations 90s-1800s apart and that spacing
+        is the one thing about a drill's timeline that has to hold. Only the
+        imagery changes: same clock, real pictures.
+        """
+        from road_cleaner.adapters.media.frame_extract import (
+            FrameExtractionError,
+            sample_clip,
+        )
+
+        path = Path(self.c.settings.media_local_path) / clip_key
+        try:
+            sampled = await sample_clip(path, count=CLIP_SAMPLES)
+        except (FrameExtractionError, OSError) as exc:
+            log.warning("Could not cut stills from the drill clip", extra={"error": str(exc)})
+            return None
+        if len(sampled) < len(staged):
+            return None
+
+        # Every still, not a chosen pair. Picking two up front meant guessing
+        # which moments of an approach the hazard would be legible in, and the
+        # guess was wrong twice: first and last put it a hundred metres off and
+        # then already under the car. The analyst looks at all of them and the
+        # gate weighs whatever was found, which is how `inspect` reads a clip
+        # and the reason case pages work.
+        #
+        # One OBSERVATION_GAP between consecutive stills, not the gap divided
+        # among them. Squeezing five samples into the window meant neighbours
+        # sixty seconds apart, and the gate wants at least ninety before it will
+        # treat a second sighting as corroboration -- so a run that found the
+        # pothole twice, at 0.88 and 0.98, was told it had only ever seen it
+        # once. Five stills at four minutes span sixteen, still inside the
+        # thirty-minute ceiling the other side of the same check.
+        start = staged[0][0].captured_at
+        span = OBSERVATION_GAP
+
+        frames: list[tuple[Frame, bytes]] = []
+        urls: list[str] = []
+        for position, still in enumerate(sampled):
+            key = f"{SYNTHETIC_PREFIX}{case_id}/clip-{still.index}.jpg"
+            await self.c.media_blobs.put(key, still.jpeg, content_type="image/jpeg")
+            frame = Frame(
+                camera_id=camera.id, captured_at=start + span * position, blob_key=key,
+                phash=phash(still.jpeg), width=640, height=360,
+            )
+            await self.c.repository.save_frame(frame)
+            frames.append((frame, still.jpeg))
+            urls.append(f"/media/{key}")
+        # The staged renders are replaced, not appended: a report carrying both
+        # would enclose two pictures of the same hazard that do not match.
+        result.frame_urls = urls
+        return frames
 
     async def _open_case(self, case_id, camera, detections, gate, frames) -> Case:
         detection = detections[-1]

@@ -74,6 +74,25 @@ _HAZARD_PHRASING = {
     "stalled_vehicle": (
         "one ordinary sedan halted at the roadside with its hazard lights blinking"
     ),
+    # Depth and a broken edge are the whole hazard -- without them the render is
+    # a dark smudge the analyst correctly reads as a stain. Described as absent
+    # surface rather than as an object, for the `_SIZE_CLAMP` reason below.
+    # Close and near-side on purpose. The first render put a technically correct
+    # 50cm pothole where a highway camera would really see one -- far down the
+    # carriageway -- and at that distance it was sixty pixels of dark smudge that
+    # the analyst quite reasonably read as no hazard at all. A hazard the model
+    # cannot resolve is not a test of the model. The clamp below still stops it
+    # becoming a trench.
+    # "cracked surface around it" was asking for the wrong picture. It rendered
+    # several metres of spidered, tar-sealed asphalt with a hole somewhere in it,
+    # and the analyst boxed the cracking -- reasonably, since it was the larger
+    # and darker feature. One clean hole in otherwise sound road is both the
+    # easier thing to identify and the truer picture of what gets reported.
+    "pothole": (
+        "a single broken-out hole in the asphalt about a metre across, with a "
+        "ragged crumbling edge and dark visible depth, in otherwise smooth road "
+        "surface"
+    ),
     # "A short line of cones" rendered them parked neatly along the shoulder,
     # parallel to the barrier, closing a lane nobody could drive in anyway --
     # which is why the analyst read the clip as ordinary signed roadworks and
@@ -188,9 +207,10 @@ def scenario_prompt(
     # closure, they are scenery.
     manoeuvre = _MANOEUVRE.get(hazard_key, _MANOEUVRE_PASS)
 
+    distance = _DISTANCE.get(hazard_key, _DISTANCE_DEFAULT)
     return (
-        f"{_STYLE} The car is driving on {road}. {placement}, about a hundred "
-        f"metres away, is {subject}.{seen} It is visible but unremarkable, small "
+        f"{_STYLE} The car is driving on {road}. {placement}, {distance}, "
+        f"is {subject}.{seen} It is visible but unremarkable, small "
         f"at first and growing only as the car gets nearer, the way a real object "
         f"does. {manoeuvre} Throughout the shot it keeps exactly the same size "
         f"and shape, and {clamp}."
@@ -204,6 +224,31 @@ _MANOEUVRE = {
         "The car approaches at a steady speed, signals, moves over into the open "
         "lane alongside, and continues past the coned-off section."
     ),
+    # Slows rather than passes, and the reason is sampling rather than driving.
+    # A pothole starts fifteen metres out, so a car that drives over it leaves
+    # the hazard on screen for about three seconds of an eight-second clip --
+    # and stills taken evenly across the clip then land mostly on empty road.
+    # A run needs two independent sightings, so that put the whole thing one
+    # unlucky frame from failing. Slowing keeps it in view for the full clip,
+    # which is also what a driver does when they see one.
+    "pothole": (
+        "The car slows as it approaches and comes to a stop a short distance "
+        "before it, keeping it in view ahead the whole time and never driving "
+        "over it."
+    ),
+}
+
+# How far off the hazard starts. A hundred metres is right for the things this
+# began with -- a mattress, a stalled car, a deer are all recognisable at that
+# range and the approach is what makes the clip read as real.
+#
+# It is wrong for a pothole. A metre-wide hole a hundred metres down a highway is
+# a few dozen dark pixels, and the analyst read exactly that as no hazard at all,
+# twice. The camera has to be near enough that the thing is legible, because a
+# hazard the model cannot resolve tests nothing.
+_DISTANCE_DEFAULT = "about a hundred metres away"
+_DISTANCE = {
+    "pothole": "about fifteen metres ahead and closing",
 }
 
 _PLACEMENT_IN_LANE = "Ahead on the road in the car's own lane"
@@ -211,6 +256,7 @@ _PLACEMENT_ROADSIDE = "Ahead at the side of the road, off the carriageway"
 
 _PLACEMENT = {
     "debris": _PLACEMENT_IN_LANE,
+    "pothole": _PLACEMENT_IN_LANE,
     "flooding": _PLACEMENT_IN_LANE,
     "unreported_closure": _PLACEMENT_IN_LANE,
     "stalled_vehicle": _PLACEMENT_ROADSIDE,
@@ -241,6 +287,13 @@ _SIZE_CLAMP = {
         "height of the passing traffic, and never rears up or fills the frame"
     ),
     "animal": "stays small in the frame, far away at the roadside",
+    # Names no new object at all -- it is a hole, and the only things referred to
+    # are the lane and the road surface that are already in the scene.
+    "pothole": (
+        "stays an opening in the road surface no wider than the car's own lane, "
+        "never a trench, never deep enough to swallow a wheel, and stays in "
+        "view ahead rather than passing under the car"
+    ),
 }
 
 

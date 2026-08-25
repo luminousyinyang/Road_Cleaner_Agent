@@ -879,6 +879,11 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
   line-height: 1.7; color: var(--ink-2); max-width: 64ch;
 }
 .draft__why strong { color: var(--rust); }
+/* The one outcome on this site that is not a restraint. Everywhere else the
+   rust `strong` reads as "and here is why it stopped"; a completed send is the
+   opposite claim and must not borrow the colour that means "held". */
+.draft__why--sent strong { color: var(--green); }
+.demo-send__to { font-family: var(--mono); color: var(--ink); }
 
 @media (max-width: 720px) {
   .stage { grid-template-columns: 16px 1fr; }

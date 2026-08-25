@@ -846,6 +846,99 @@ class TestNothingReachesARealAgencyByAccident:
         assert composed.destination.startswith("https://www.ncdot.gov")
 
 
+class TestTheAllowlistIsNarrowerThanTheSwitch:
+    """The demonstration send has to reach one inbox without opening seventy-one.
+
+    `ALLOW_LIVE_FILING=true` is all-or-nothing, and "all" includes
+    `contact@dot.ga.gov` and `info@azdot.gov` -- two genuinely deliverable
+    addresses sitting in `seeds/agencies.yaml`. Proving the last step works must
+    not require arming those, so `LIVE_FILING_ALLOWLIST` names recipients one at
+    a time. These tests are the fence around that: the allowlist may only ever
+    permit an address it names, and must never widen anything else.
+    """
+
+    # Real, deliverable, and nothing here may ever be allowed to reach them.
+    REAL_AGENCIES = ["contact@dot.ga.gov", "info@azdot.gov"]
+
+    def _guard(self, monkeypatch, **env):
+        """Build a guard over settings stated in full, never inherited.
+
+        `Settings()` reads the developer's `.env`, so a case meaning "nothing is
+        configured" that simply omitted these would inherit whatever is on the
+        machine running it. It did: once a real `LIVE_FILING_ALLOWLIST` existed
+        locally, the test asserting an unconfigured system refuses everything
+        started failing -- correctly, because the system was no longer
+        unconfigured. Both switches are pinned here so each case describes the
+        world it is actually testing.
+        """
+        import road_cleaner.config as cfg
+        from road_cleaner.adapters.filing.base import guard_live_send
+
+        settings = cfg.Settings(
+            ROAD_CLEANER_MODE="local",
+            **{"LIVE_FILING_ALLOWLIST": "", "ALLOW_LIVE_FILING": "false", **env},
+        )
+        monkeypatch.setattr(cfg, "get_settings", lambda: settings)
+        return guard_live_send
+
+    def _refuses(self, guard, destination) -> bool:
+        from road_cleaner.ports.filing_channel import FilingError
+
+        try:
+            guard(destination, "email")
+        except FilingError:
+            return True
+        return False
+
+    @pytest.mark.parametrize("destination", [*REAL_AGENCIES, "kylezemel@gmail.com"])
+    def test_nothing_sends_when_nothing_is_configured(self, monkeypatch, destination):
+        guard = self._guard(monkeypatch)
+        assert self._refuses(guard, destination)
+
+    def test_an_allowlisted_address_sends(self, monkeypatch):
+        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="kylezemel@gmail.com")
+        assert not self._refuses(guard, "kylezemel@gmail.com")
+
+    @pytest.mark.parametrize("destination", REAL_AGENCIES)
+    def test_a_real_agency_is_still_refused_alongside_it(self, monkeypatch, destination):
+        """The whole point. One address opening is not every address opening."""
+        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="kylezemel@gmail.com")
+        assert self._refuses(guard, destination)
+
+    def test_it_needs_neither_dry_run_nor_the_global_switch(self, monkeypatch):
+        """Otherwise the demo would cost exactly the unlock it exists to avoid."""
+        guard = self._guard(
+            monkeypatch,
+            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com",
+            DRY_RUN="true",
+            ALLOW_LIVE_FILING="false",
+        )
+        assert not self._refuses(guard, "kylezemel@gmail.com")
+
+    def test_the_address_is_matched_case_insensitively(self, monkeypatch):
+        """A recipient typed with different capitals is the same mailbox."""
+        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="KyleZemel@Gmail.com")
+        assert not self._refuses(guard, "kylezemel@gmail.com  ")
+
+    def test_an_empty_destination_is_never_allowlisted(self, monkeypatch):
+        """A blank entry must not become a wildcard."""
+        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="a@b.test, ,")
+        assert self._refuses(guard, "")
+
+    def test_an_empty_allowlist_permits_nothing(self, monkeypatch):
+        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="   ")
+        assert self._refuses(guard, "kylezemel@gmail.com")
+
+    def test_the_refusal_still_names_what_to_do(self, monkeypatch):
+        from road_cleaner.ports.filing_channel import FilingError
+
+        guard = self._guard(monkeypatch)
+        with pytest.raises(FilingError) as exc:
+            guard("contact@dot.ga.gov", "email")
+        for hint in ("ALLOW_LIVE_FILING", "DRY_RUN", "LIVE_FILING_ALLOWLIST"):
+            assert hint in str(exc.value)
+
+
 class TestTheContactFields:
     """A form arriving at a DOT needs a reply path or it needs a blank.
 

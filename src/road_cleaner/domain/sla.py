@@ -29,6 +29,10 @@ DEFAULT_SLA_HOURS: dict[HazardType, float] = {
     HazardType.ANIMAL: 8,
     HazardType.UNREPORTED_CLOSURE: 12,
     HazardType.DEBRIS: 24,
+    # Days, not the fortnight roadside hardware gets: a pothole is a live
+    # wheel-damage claim every hour it stays open, and DOT pothole programmes
+    # are the one thing most of them publish a turnaround target for.
+    HazardType.POTHOLE: 24 * 3,
     HazardType.INFRASTRUCTURE_DAMAGE: 24 * 14,
 }
 
@@ -47,6 +51,10 @@ SLA_RATIONALE: dict[HazardType, str] = {
         "An unmarked lane closure needs signage up long before the day is out."
     ),
     HazardType.DEBRIS: "Debris in a travel lane is supposed to be picked up within a day.",
+    HazardType.POTHOLE: (
+        "A pothole damages a wheel every time somebody hits it, so it is patched "
+        "in days rather than left on a maintenance list."
+    ),
     HazardType.INFRASTRUCTURE_DAMAGE: (
         "Damaged roadside hardware is routine maintenance, not an emergency — two weeks."
     ),

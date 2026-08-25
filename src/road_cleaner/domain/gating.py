@@ -52,7 +52,13 @@ HAZARD_FAMILIES: dict[HazardType, frozenset[str]] = {
     ),
     HazardType.FLOODING: frozenset({"flood", "water", "weather", "high water", "standing water"}),
     HazardType.INFRASTRUCTURE_DAMAGE: frozenset(
-        {"damage", "guardrail", "bridge", "sign", "signal", "maintenance", "pothole"}
+        # "pothole" moved to its own family below. Left here it made a posted
+        # pothole suppress a guardrail report and vice versa, which is the
+        # matching being wrong in the direction that loses a real hazard.
+        {"damage", "guardrail", "bridge", "sign", "signal", "maintenance"}
+    ),
+    HazardType.POTHOLE: frozenset(
+        {"pothole", "pot hole", "surface", "pavement", "road defect", "maintenance"}
     ),
     HazardType.ANIMAL: frozenset({"animal", "livestock", "deer", "hazard"}),
     HazardType.PEDESTRIAN_ON_HIGHWAY: frozenset({"pedestrian", "person", "hazard"}),

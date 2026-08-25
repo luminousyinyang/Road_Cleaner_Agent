@@ -40,6 +40,13 @@ class HazardType(StrEnum):
     INFRASTRUCTURE_DAMAGE = "infrastructure_damage"
     ANIMAL = "animal"
     PEDESTRIAN_ON_HIGHWAY = "pedestrian_on_highway"
+    # Road surface rather than roadside furniture, which is why it is not folded
+    # into `INFRASTRUCTURE_DAMAGE`: a pothole is the single most-reported defect
+    # a DOT maintenance desk handles, it has its own intake category on most
+    # Open311 endpoints, and it gets fixed in days rather than the fortnight a
+    # bent guardrail waits. Sharing a type would have given it the wrong title,
+    # the wrong service code and a deadline two weeks too long.
+    POTHOLE = "pothole"
 
 
 class Severity(StrEnum):
