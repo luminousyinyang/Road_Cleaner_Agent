@@ -31,6 +31,9 @@ from road_cleaner.container import build_container
 from road_cleaner.domain.models import Camera, Frame
 from road_cleaner.logging import configure_logging, get_logger
 from road_cleaner.pipeline.demo_send import SEND_STAGE as DEMO_SEND_STAGE
+from road_cleaner.pipeline.inspect import STAGES as INSPECT_STAGES
+from road_cleaner.pipeline.inspect import STAGES_NO_SEND as INSPECT_STAGES_NO_SEND
+from road_cleaner.pipeline.inspect import Inspector
 from road_cleaner.pipeline.drill import STAGES as DRILL_STAGES
 from road_cleaner.ports.blob_store import BlobNotFoundError
 from road_cleaner.ports.media import is_synthetic_key
@@ -273,6 +276,14 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 # deliberately not there.
                 "unsimulatable": detail.case.hazard_type.value in UNSIMULATABLE,
                 "gen_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
+                # Six stages where a run can transmit, five where it cannot.
+                # Built from the pipeline's own list rather than restated here,
+                # so the page cannot show a stage the run will never reach.
+                "stages": (
+                    INSPECT_STAGES
+                    if Inspector(c)._demo_recipient()
+                    else INSPECT_STAGES_NO_SEND
+                ),
             },
         )
 
@@ -511,6 +522,82 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         if job is None:
             raise HTTPException(status_code=404, detail="No such demonstration run")
         return job.as_dict()
+
+    @app.post("/api/cases/{case_id}/send")
+    async def send_case_for_real(request: Request, case_id: str):
+        """Transmit an existing case's report, for real, to the demo inbox.
+
+        The other send on a case page opens a draft or a form and leaves the
+        last action to a person, which is right: those addresses are agencies.
+        This one goes to the allowlisted demonstration inbox and nowhere else --
+        `guard_live_send` sees to that regardless of what is asked for here.
+
+        Composed from the case as it stands rather than re-running the agent: the
+        analysis already happened, and a button labelled "send" should send
+        rather than quietly spend two minutes of Vertex quota first.
+        """
+        from road_cleaner.adapters.filing.email_channel import EmailChannel
+        from road_cleaner.domain.enums import Channel
+        from road_cleaner.domain.models import Filing
+        from road_cleaner.ports.filing_channel import FilingError
+
+        c = request.app.state.container
+        address = _demo_recipient(c)
+
+        detail = await c.repository.get_case_detail(case_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="No such case")
+        if detail.agency is None:
+            raise HTTPException(
+                status_code=409,
+                detail="No agency resolved for this case, so there is nothing to report.",
+            )
+
+        analysis = S.last_analysis(c.settings.media_local_path, case_id, detail, c.settings)
+        if not analysis or not analysis.get("report_body"):
+            raise HTTPException(
+                status_code=409,
+                detail="This case has no composed report yet. Run the agent over it first.",
+            )
+
+        # Boxed stills if the run left any, else whatever frames it has. Same
+        # rule and same reason as the demonstration console.
+        keys = [
+            u.removeprefix("/media/")
+            for u in (analysis.get("evidence_urls") or [])
+            if u.startswith("/media/")
+        ]
+        root = Path(c.settings.media_local_path)
+        keys = [k for k in keys if (root / k).is_file()][:2]
+
+        channel = EmailChannel(
+            host=c.settings.smtp_host,
+            port=c.settings.smtp_port,
+            user=c.settings.smtp_user,
+            password=c.settings.smtp_password,
+            from_address=c.settings.filing_from_address,
+            attachment_root=root,
+        )
+        agency = detail.agency.model_copy(update={"email": address, "channel": Channel.EMAIL})
+        filing = Filing(
+            case_id=case_id, agency_id=detail.agency.id, channel=Channel.EMAIL, tier=1,
+            subject=analysis.get("report_subject") or "Road hazard",
+            body=analysis["report_body"], attachments=keys, dry_run=False,
+        )
+        try:
+            await channel.transmit(channel.compose(filing, detail.case, agency), agency)
+        except FilingError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        return {
+            "sent": True,
+            "to": address,
+            "attachments": len(keys),
+            # The agency the rules picked, which is not where this went. The page
+            # says both, because a button that reports "sent" beside a DOT's name
+            # invites exactly the wrong conclusion.
+            "resolved_agency": detail.agency.name,
+        }
 
     @app.post("/api/cases/{case_id}/location")
     async def move_case(request: Request, case_id: str):

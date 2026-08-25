@@ -87,13 +87,25 @@
     }
   });
 
+  // Job state lives in the serving process, so a poll that lands on another
+  // instance is told there is no such run -- truthfully, and about a run that is
+  // still going elsewhere. Retried before it is believed; see inspect.js.
+  const MISSES_ALLOWED = 5;
+
   async function follow(jobId) {
+    let misses = 0;
     for (;;) {
       const response = await fetch(`/api/demo/send/${encodeURIComponent(jobId)}`);
+      if (response.status === 404 && misses < MISSES_ALLOWED) {
+        misses += 1;
+        await wait(POLL_MS);
+        continue;
+      }
       if (!response.ok) {
         fail(await describe(response));
         return;
       }
+      misses = 0;
       const job = await response.json();
       if (job.result) paint(job.result);
 

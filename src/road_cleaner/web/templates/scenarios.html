@@ -34,11 +34,6 @@
   </div>
 </section>
 
-<div class="wrap">
-  {% include "partials/drill.html" %}
-  {% include "partials/demo_send.html" %}
-</div>
-
 {# --- the library --- #}
 <section class="library" id="library">
   <div class="wrap">
@@ -151,14 +146,6 @@
 </footer>
 {% endblock %}
 
-{% block head %}
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-{% endblock %}
-
 {% block scripts %}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
-<script src="/static/js/map.js?v={{ v }}" defer></script>
 <script src="/static/js/simulate.js?v={{ v }}" defer></script>
-<script src="/static/js/drill.js?v={{ v }}" defer></script>
-<script src="/static/js/demo_send.js?v={{ v }}" defer></script>
 {% endblock %}

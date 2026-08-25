@@ -69,10 +69,15 @@ class TestPages:
         r = client.get("/")
         assert r.status_code == 200
         assert "files the" in r.text and "paperwork" in r.text
-        # ...and the drill, which is how you watch it happen.
-        assert "drill-form" in r.text
-        # ...with the simulation still present, below.
+        # ...and the library, which is how you watch it happen.
+        #
+        # This used to require the drill console here too. Both consoles were
+        # removed from the front door once a case page could run the whole
+        # pipeline and send by itself: two places to watch the same thing, one
+        # of which stopped short of the interesting part, is a worse front door
+        # than the cases themselves.
         assert "scenario library" in r.text.lower()
+        assert "drill-form" not in r.text
 
     def test_road_log_lists_cases(self, client, populated):
         _, cases = populated
@@ -1161,10 +1166,16 @@ class TestTheMapPicker:
         client.get("/api/where", params={"lat": 30.2672, "lng": -97.7431})
         assert count() == before, "a pin drop created a camera"
 
-    def test_the_drill_offers_a_map(self, client):
+    def test_the_front_door_no_longer_carries_a_map(self, client):
+        """The only map on `/` belonged to the drill, which is gone from it.
+
+        Leaflet went with it. It is two external requests on the page judges
+        land on first, and nothing left there uses one -- the pin-drop map that
+        matters is on the case page, tested below.
+        """
         body = client.get("/").text
-        assert 'id="drill-map"' in body
-        assert "leaflet" in body.lower()
+        assert 'id="drill-map"' not in body
+        assert "leaflet" not in body.lower()
 
     def test_the_case_page_offers_one_too(self, client, a_case):
         body = client.get(f"/cases/{a_case.id}").text

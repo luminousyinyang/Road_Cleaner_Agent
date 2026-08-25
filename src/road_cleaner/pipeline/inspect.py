@@ -47,16 +47,28 @@ from road_cleaner.ports.media import SYNTHETIC_PREFIX
 
 log = get_logger(__name__)
 
-# Five stages, in order. As in `drill.STAGES` there is no sixth: the run ends at
-# a composed report on purpose, and a greyed-out "Send" stage would read as
-# having run out of time rather than having declined.
+# The stages a run goes through, in order.
+#
+# The last one is conditional. Without a demonstration inbox configured the run
+# ends at a composed report -- on purpose, because the addresses in the registry
+# belong to agencies and the last action should be a person's -- and the Send
+# stage is not shown at all. A greyed-out one would read as having run out of
+# time rather than having declined.
 STAGES: list[tuple[str, str]] = [
     ("sample", "Sample"),
     ("look", "Look"),
     ("confirm", "Confirm"),
     ("resolve", "Resolve"),
     ("report", "Report"),
+    # Present only when a demonstration inbox is configured -- see `_send`. On
+    # every other deployment the run ends at a composed report, which is the
+    # honest default: the addresses in the registry belong to agencies and the
+    # last action should be a person's.
+    ("send", "Send"),
 ]
+
+# The stages a run shows when nothing may be transmitted.
+STAGES_NO_SEND: list[tuple[str, str]] = STAGES[:-1]
 
 # How many stills to pull. Five is a compromise with the Vertex quota, which is
 # the binding constraint on this whole feature: ~20-30 vision calls before
@@ -144,9 +156,14 @@ class InspectResult:
     # produces genuinely different results in the two places and the page must
     # not narrate a replay in the voice of a live call.
     is_scripted: bool = True
-    # Always False. Present so the page can assert on it rather than trust a
-    # comment, and so the Send button has something to check.
+    # False unless this deployment has a demonstration inbox and the run cleared
+    # the gate, in which case the report really did leave. It was `always False`
+    # when nothing here could transmit; that is no longer true, and a flag whose
+    # comment outlives its behaviour is worse than no flag.
     filed: bool = False
+    # Where it went, when it went. Never an agency: `_demo_recipient` only ever
+    # returns an allowlisted address, and `guard_live_send` enforces that again.
+    sent_to: str | None = None
     # True when Vertex could not be reached and a previous run was replayed.
     # Surfaced in the UI -- a cached answer presented as a live one would make
     # this whole feature a mockup, which is the thing it exists to replace.
@@ -316,7 +333,11 @@ class Inspector:
                 f"{case_id} has no clip to analyse. Generate one from the library first."
             )
 
-        stages = [StageReport(k, label) for k, label in STAGES]
+        # The Send stage exists only where something can actually be sent.
+        may_send = self._demo_recipient() is not None
+        stages = [
+            StageReport(k, label) for k, label in (STAGES if may_send else STAGES_NO_SEND)
+        ]
         result = InspectResult(
             stages=stages,
             case_id=case_id,
@@ -419,6 +440,20 @@ class Inspector:
         result.agency = verdict.agency.name
         result.agency_rule = verdict.rule_id
         result.agency_rationale = verdict.rationale
+        # Onto the record, not just into the sidecar.
+        #
+        # This resolved the agency, wrote it beside the clip, and left
+        # `case.agency_id` empty -- so the page displayed "Georgia DOT —
+        # District 7" from the sidecar while everything reading the case saw no
+        # agency at all. The send path reads the case, and refused a report the
+        # same screen was naming a recipient for.
+        if case.agency_id != verdict.agency.id:
+            case.agency_id = verdict.agency.id
+            case.agency_name = verdict.agency.name
+            case.channel = verdict.agency.channel
+            case.ref_label = verdict.agency.display_ref_label
+            case.updated_at = datetime.now().astimezone()
+            await self.c.repository.save_case(case)
         await advance("resolve", f"{verdict.agency.name}  ({verdict.rule_id})")
 
         # --- 5. compose, and stop ----------------------------------------
@@ -432,13 +467,96 @@ class Inspector:
         result.report_channel = preview.channel
         result.report_payload = preview.payload
         result.report_email = verdict.agency.email or None
+        recipient = self._demo_recipient()
         by_key["report"].state = "done"
-        by_key["report"].detail = "Draft ready — not sent"
+        by_key["report"].detail = "Draft ready" if recipient else "Draft ready — not sent"
         result.analyzed_at = datetime.now().astimezone().isoformat(timespec="seconds")
         await publish()
 
+        # --- 6. send, if there is anywhere it is allowed to go ------------
+        if recipient:
+            await self._send(result, by_key, case, verdict.agency, recipient, publish)
+
         self._cache(clip, result)
         return result
+
+    def _demo_recipient(self) -> str | None:
+        """The demonstration inbox, if this deployment has one and may write to it.
+
+        Both settings are required and they are not the same question: one names
+        a recipient, the other permits sending to it. Absent either, this returns
+        None and the run ends at a composed report exactly as it always did.
+        """
+        s = self.settings
+        address = (getattr(s, "demo_send_to", "") or "").strip()
+        if not address or not getattr(s, "smtp_host", None):
+            return None
+        return address if address.lower() in s.live_filing_allowed else None
+
+    async def _send(self, result, by_key, case, agency, recipient, publish) -> None:
+        """Transmit the composed report. The last step, taken automatically.
+
+        Automatic on purpose. A demonstration that ends at a button asks the
+        person watching to take the system's word for the only part they cannot
+        verify; pressing it themselves is not evidence that the agent can. So a
+        run that clears the gate finishes the job, and the stage says where it
+        went.
+
+        The gate still decides. `watch` means two looks disagreed, and a
+        demonstration that files what the gate refused is showing something the
+        product does not do.
+        """
+        from road_cleaner.adapters.filing.email_channel import EmailChannel
+        from road_cleaner.domain.enums import Channel
+        from road_cleaner.ports.filing_channel import FilingError
+
+        stage = by_key["send"]
+        if result.gate_decision != "file":
+            stage.state = "blocked"
+            stage.detail = f"Gate said {result.gate_decision} — nothing sent"
+            await publish()
+            return
+
+        stage.state = "running"
+        await publish()
+
+        # The boxed still, which is the whole reason this carries an attachment
+        # rather than a link: a picture with the hazard marked survives being
+        # forwarded, and a `/media/...` path does not.
+        root = Path(self.settings.media_local_path)
+        keys = [
+            k for k in [(result.evidence_url or "").removeprefix("/media/")]
+            if k and (root / k).is_file()
+        ]
+        channel = EmailChannel(
+            host=self.settings.smtp_host,
+            port=self.settings.smtp_port,
+            user=self.settings.smtp_user,
+            password=self.settings.smtp_password,
+            from_address=self.settings.filing_from_address,
+            attachment_root=root,
+        )
+        addressed = agency.model_copy(update={"email": recipient, "channel": Channel.EMAIL})
+        filing = Filing(
+            case_id=case.id, agency_id=agency.id, channel=Channel.EMAIL, tier=1,
+            subject=result.report_subject or "Road hazard",
+            body=result.report_body or "", attachments=keys, dry_run=False,
+        )
+        try:
+            await channel.transmit(channel.compose(filing, case, addressed), addressed)
+        except (FilingError, OSError) as exc:
+            stage.state = "failed"
+            stage.detail = str(exc)
+            log.warning("Automatic send failed", extra={"case": case.id, "error": str(exc)})
+            await publish()
+            return
+
+        result.filed = True
+        result.sent_to = recipient
+        enclosed = f"{len(keys)} still attached" if keys else "no still attached"
+        stage.detail = f"Delivered to {recipient} — {enclosed}"
+        stage.state = "done"
+        await publish()
 
     async def _look(
         self, result, camera: Camera, frames: list[SampledFrame], publish

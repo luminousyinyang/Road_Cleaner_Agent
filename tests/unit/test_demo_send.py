@@ -200,7 +200,7 @@ class TestTheGateStillDecides:
     async def _run(self, settings, outcome, monkeypatch):
         from road_cleaner.pipeline import demo_send as module
 
-        async def fake_run(self, text, *, full=False, pin=None, on_progress=None):
+        async def fake_run(self, text, *, on_progress=None, **_kwargs):
             if on_progress:
                 await on_progress(outcome)
             return outcome

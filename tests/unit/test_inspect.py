@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import types
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from road_cleaner.pipeline.inspect import (
     CACHE_SUFFIX,
     CLIP_GATE,
     STAGES,
+    STAGES_NO_SEND,
     InspectError,
     Inspector,
     _clearest,
@@ -133,10 +135,79 @@ async def case_with_clip(container):
 # ------------------------------------------------------------------- shape
 
 
-def test_there_is_no_send_stage():
-    """The run ends at a composed report on purpose. A greyed-out sixth stage
-    would read as having run out of time rather than having declined."""
-    assert [k for k, _ in STAGES] == ["sample", "look", "confirm", "resolve", "report"]
+def test_there_is_no_send_stage_without_somewhere_to_send():
+    """The default is still a run that ends at a composed report.
+
+    That used to be unconditional, and this test asserted it as an invariant.
+    It is now conditional: a deployment with an allowlisted demonstration inbox
+    finishes the job, because a demonstration ending at a button asks the person
+    watching to take the system's word for the only part they cannot verify.
+
+    What must stay true is the direction of the default. Without a recipient
+    there is no Send stage at all -- not a greyed-out one, which would read as
+    having run out of time rather than having declined.
+    """
+    assert [k for k, _ in STAGES_NO_SEND] == [
+        "sample", "look", "confirm", "resolve", "report",
+    ]
+    assert [k for k, _ in STAGES] == [*[k for k, _ in STAGES_NO_SEND], "send"]
+
+
+class TestTheSendStageOnlyExistsWhereItCanBeUsed:
+    """`_demo_recipient` is the single gate on whether a run may transmit.
+
+    Both settings are required and they answer different questions -- one names
+    a recipient, the other permits writing to it -- so neither alone may unlock
+    a send.
+    """
+
+    def _inspector(self, **env):
+        import road_cleaner.config as cfg
+        from road_cleaner.pipeline.inspect import Inspector
+
+        settings = cfg.Settings(ROAD_CLEANER_MODE="local", **env)
+        return Inspector(types.SimpleNamespace(settings=settings))
+
+    def test_nothing_configured_means_no_recipient(self):
+        assert self._inspector()._demo_recipient() is None
+
+    def test_a_recipient_without_the_allowlist_is_refused(self):
+        got = self._inspector(
+            DEMO_SEND_TO="kylezemel@gmail.com", SMTP_HOST="smtp.gmail.com",
+            LIVE_FILING_ALLOWLIST="",
+        )._demo_recipient()
+        assert got is None
+
+    def test_an_allowlist_without_a_recipient_sends_nowhere(self):
+        got = self._inspector(
+            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com", SMTP_HOST="smtp.gmail.com",
+            DEMO_SEND_TO="",
+        )._demo_recipient()
+        assert got is None
+
+    def test_no_mail_server_means_no_recipient(self):
+        got = self._inspector(
+            DEMO_SEND_TO="kylezemel@gmail.com",
+            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com", SMTP_HOST="",
+        )._demo_recipient()
+        assert got is None
+
+    def test_all_three_together_unlock_it(self):
+        got = self._inspector(
+            DEMO_SEND_TO="kylezemel@gmail.com",
+            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com",
+            SMTP_HOST="smtp.gmail.com",
+        )._demo_recipient()
+        assert got == "kylezemel@gmail.com"
+
+    def test_a_real_agency_address_can_never_become_the_recipient(self):
+        """The allowlist is the fence, and it is checked against the recipient."""
+        got = self._inspector(
+            DEMO_SEND_TO="contact@dot.ga.gov",
+            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com",
+            SMTP_HOST="smtp.gmail.com",
+        )._demo_recipient()
+        assert got is None
 
 
 def test_the_clip_gate_relaxes_only_the_corroboration_window():
@@ -571,3 +642,130 @@ class TestWhereItWouldGo:
         assert result.report_destination.startswith("https://")
         # And it survives into the payload the browser actually reads.
         assert result.as_dict()["report_destination"] == result.report_destination
+
+
+class TestTheAutomaticSend:
+    """The last step, taken without a button.
+
+    A demonstration that ends at a control asks the person watching to take the
+    system's word for the only part they cannot verify, so a run that clears the
+    gate finishes the job. What must not change is what decides: the gate, and
+    the allowlist.
+    """
+
+    class FakeSMTP:
+        sent: dict = {}
+
+        def __init__(self, host, port, timeout=None):
+            TestTheAutomaticSend.FakeSMTP.sent = {"endpoint": (host, port)}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def starttls(self):
+            TestTheAutomaticSend.FakeSMTP.sent["starttls"] = True
+
+        def login(self, user, password):
+            TestTheAutomaticSend.FakeSMTP.sent["login"] = user
+
+        def send_message(self, message):
+            TestTheAutomaticSend.FakeSMTP.sent["message"] = message
+
+    async def _run(self, tmp_path, monkeypatch, *, decision="file", evidence=True):
+        from unittest.mock import patch
+
+        import road_cleaner.config as cfg
+        from road_cleaner.domain.enums import AgencyLevel, Channel
+        from road_cleaner.domain.models import Agency, Case
+        from road_cleaner.pipeline.inspect import STAGES, InspectResult, Inspector
+
+        folder = tmp_path / SYNTHETIC_PREFIX / "GA-1"
+        folder.mkdir(parents=True)
+        (folder / "evidence.jpg").write_bytes(b"\xff\xd8" + b"x" * 900)
+
+        settings = cfg.Settings(
+            ROAD_CLEANER_MODE="local", MEDIA_LOCAL_PATH=str(tmp_path),
+            DEMO_SEND_TO="kylezemel@gmail.com",
+            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com",
+            SMTP_HOST="smtp.gmail.com", SMTP_USER="bot@example.test",
+            SMTP_PASSWORD="pw", FILING_FROM_ADDRESS="bot@example.test",
+        )
+        monkeypatch.setattr(cfg, "get_settings", lambda: settings)
+        inspector = Inspector(types.SimpleNamespace(settings=settings))
+
+        result = InspectResult(
+            stages=[], case_id="GA-1",
+            gate_decision=decision,
+            report_subject="Road hazard: pothole in a travel lane on I-75",
+            report_body="Reporting a road hazard seen from a vehicle dashcam.",
+            evidence_url="/media/synthetic/GA-1/evidence.jpg" if evidence else None,
+        )
+        by_key = {k: __import__(
+            "road_cleaner.pipeline.drill", fromlist=["StageReport"]
+        ).StageReport(k, label) for k, label in STAGES}
+        case = Case(
+            id="GA-1", camera_id="c", state="GA", hazard_type=HazardType.DEBRIS,
+            hazard_title="t", location="I-75",
+        )
+        agency = Agency(
+            id="ga-dot-d7", name="Georgia DOT — District 7", level=AgencyLevel.STATE_DOT,
+            state="GA", channel=Channel.MAINTENANCE_FORM, email="contact@dot.ga.gov",
+        )
+
+        async def publish():
+            return None
+
+        TestTheAutomaticSend.FakeSMTP.sent = {}
+        with patch("smtplib.SMTP", TestTheAutomaticSend.FakeSMTP):
+            await inspector._send(
+                result, by_key, case, agency, "kylezemel@gmail.com", publish
+            )
+        return result, by_key
+
+    async def test_a_cleared_run_sends_without_anything_being_pressed(
+        self, tmp_path, monkeypatch
+    ):
+        result, by_key = await self._run(tmp_path, monkeypatch)
+        assert result.filed is True
+        assert result.sent_to == "kylezemel@gmail.com"
+        assert by_key["send"].state == "done"
+        assert "Delivered to kylezemel@gmail.com" in by_key["send"].detail
+
+    async def test_it_goes_to_the_allowlisted_inbox_not_the_agency(
+        self, tmp_path, monkeypatch
+    ):
+        """The agency is resolved for real and is still not the recipient."""
+        await self._run(tmp_path, monkeypatch)
+        message = TestTheAutomaticSend.FakeSMTP.sent["message"]
+        assert message["To"] == "kylezemel@gmail.com"
+        assert "dot.ga.gov" not in message["To"]
+
+    async def test_the_boxed_still_rides_along(self, tmp_path, monkeypatch):
+        await self._run(tmp_path, monkeypatch)
+        parts = [
+            p for p in TestTheAutomaticSend.FakeSMTP.sent["message"].walk()
+            if p.get_content_maintype() == "image"
+        ]
+        assert len(parts) == 1
+        assert parts[0].get_payload(decode=True).startswith(b"\xff\xd8")
+
+    @pytest.mark.parametrize("decision", ["watch", "suppress", "drop"])
+    async def test_a_verdict_short_of_file_sends_nothing(
+        self, tmp_path, monkeypatch, decision
+    ):
+        """Automatic must not mean unconditional. The gate still decides."""
+        result, by_key = await self._run(tmp_path, monkeypatch, decision=decision)
+        assert result.filed is False
+        assert by_key["send"].state == "blocked"
+        assert "message" not in TestTheAutomaticSend.FakeSMTP.sent
+
+    async def test_a_missing_still_does_not_stop_the_report(
+        self, tmp_path, monkeypatch
+    ):
+        """A report with no picture beats no report."""
+        result, by_key = await self._run(tmp_path, monkeypatch, evidence=False)
+        assert result.filed is True
+        assert "no still attached" in by_key["send"].detail

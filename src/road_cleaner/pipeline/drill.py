@@ -269,7 +269,9 @@ class Drill:
                 break
         return place or "unnamed interchange"
 
-    def _camera(self, spec: dict[str, Any], case_id: str, pin=None) -> Camera:
+    def _camera(
+        self, spec: dict[str, Any], case_id: str, pin=None, prefix: str = _SIM_PREFIX
+    ) -> Camera:
         """The invented camera the drill stages its scene at.
 
         With a dropped pin the coordinate is real and the state comes from the
@@ -289,7 +291,7 @@ class Drill:
             road, place = spec["road"], self._place(spec.get("place"))
 
         return Camera(
-            id=f"{_SIM_PREFIX}-CCTV-{case_id.split('-')[-1]}",
+            id=f"{prefix}-CCTV-{case_id.split('-')[-1]}",
             state=state,
             name=place,
             road=road,
@@ -308,7 +310,7 @@ class Drill:
     # ------------------------------------------------------------- the run
     async def run(
         self, text: str, *, full: bool = False, pin=None, on_progress=None,
-        reuse_clip: bool = False,
+        reuse_clip: bool = False, case_prefix: str = _SIM_PREFIX, synthetic: bool = True,
     ) -> DrillResult:
         """Drive the pipeline end to end. `full` adds a Veo render.
 
@@ -318,6 +320,14 @@ class Drill:
         rendering it every time. Off for a drill, where fresh footage is the
         exercise; on for the demonstration, which shows one scenario repeatedly
         and should not bill a render -- or risk a rate limit -- per click.
+
+        `synthetic` marks the case as a drill and is what keeps it out of the
+        library, the statistics, the Auditor's queue and the filing path. Turning
+        it off produces an ordinary case that appears alongside the seeded ones,
+        which is what the demonstration case wants and what a drill must never
+        do. `case_prefix` goes with it: a case sitting in the library reading
+        `SIM-1007` next to `GA-4462` announces itself as a different kind of
+        thing, so a real one takes its state's prefix.
         """
         stages = [StageReport(k, label) for k, label in STAGES]
         result = DrillResult(stages=stages, prompt=text.strip())
@@ -345,8 +355,8 @@ class Drill:
         await begin("scaffold")
         spec = await self._scaffold(text)
         result.spec = spec
-        case_id = await repo.next_case_id(_SIM_PREFIX)
-        camera = self._camera(spec, case_id, pin)
+        case_id = await repo.next_case_id(case_prefix)
+        camera = self._camera(spec, case_id, pin, prefix=case_prefix)
         await repo.upsert_camera(camera)
         await advance(
             "scaffold",
@@ -453,7 +463,9 @@ class Drill:
         result.gate_reason = gate.reason
         await advance("confirm", f"{gate.decision.value} — {gate.reason}")
 
-        case = await self._open_case(case_id, camera, detections, gate, frames)
+        case = await self._open_case(
+            case_id, camera, detections, gate, frames, synthetic=synthetic
+        )
         result.case_id = case.id
 
         # --- 5. jurisdiction (ADK) --------------------------------------
@@ -470,6 +482,17 @@ class Drill:
         result.agency = verdict.agency.name
         result.agency_rule = verdict.rule_id
         result.agency_rationale = verdict.rationale
+        if not synthetic:
+            # A drill's case is never filed, so who owns the road only ever had
+            # to reach the console. A case seeded into the library is filed
+            # against -- the send path reads `case.agency_id` -- so the verdict
+            # has to land on the record rather than only on the result object.
+            case.agency_id = verdict.agency.id
+            case.agency_name = verdict.agency.name
+            case.channel = verdict.agency.channel
+            case.ref_label = verdict.agency.display_ref_label
+            case.updated_at = self.c.clock.now()
+            await self.c.repository.save_case(case)
         await advance("resolve", f"{verdict.agency.name}  ({verdict.rule_id})")
 
         # --- 6. compose, and stop ---------------------------------------
@@ -513,7 +536,17 @@ class Drill:
         kept_key = f"{DEMO_CLIP_PREFIX}{spec['hazard_type']}.mp4"
         if reuse and await self.c.media_blobs.exists(kept_key):
             log.info("Reusing kept demo clip", extra={"key": kept_key})
-            result.clip_url = f"/media/{kept_key}"
+            # Copied under the case's own key as well as replayed from the kept
+            # one. `clip_for_case` looks beside the case and nowhere else, so a
+            # case whose footage lived only in the shared slot opened with real
+            # detections, real boxed stills and no video at all.
+            case_key = f"{SYNTHETIC_PREFIX}{case_id}/{spec['hazard_type']}.mp4"
+            try:
+                await self._copy_clip(kept_key, case_key)
+                result.clip_url = f"/media/{case_key}"
+            except Exception as exc:  # noqa: BLE001 - the run still has its stills
+                log.warning("Could not copy the kept clip to the case", extra={"error": str(exc)})
+                result.clip_url = f"/media/{kept_key}"
             return await self._stills_from(result, kept_key, camera, case_id, staged)
 
         stub = Case(
@@ -536,12 +569,29 @@ class Drill:
             # to keep it is not worth losing the render over -- the run has its
             # footage either way, and the next one simply pays again.
             try:
-                await self.c.media_blobs.put(
-                    kept_key, await self.c.media_blobs.get(clip.key), content_type="video/mp4"
-                )
+                await self._copy_clip(clip.key, kept_key)
             except Exception as exc:  # noqa: BLE001 - a cache miss is not a failure
                 log.warning("Could not keep the demo clip", extra={"error": str(exc)})
         return await self._stills_from(result, clip.key, camera, case_id, staged)
+
+
+    async def _copy_clip(self, source: str, target: str) -> None:
+        """Copy a clip and the provenance sidecar that goes with it.
+
+        The sidecar is not decoration: the library badge reads `model_name` out
+        of it, so a clip copied without one showed `SYNTHETIC - pothole` in a row
+        of cards that all read `SYNTHETIC - veo-3.1-fast-generate-001`. Losing
+        the record of which model made a picture is also the wrong thing to do
+        to a system whose whole argument is that its evidence is traceable.
+        """
+        await self.c.media_blobs.put(
+            target, await self.c.media_blobs.get(source), content_type="video/mp4"
+        )
+        try:
+            sidecar = await self.c.media_blobs.get(f"{source}.json")
+        except Exception:  # noqa: BLE001 - an older clip may not have one
+            return
+        await self.c.media_blobs.put(f"{target}.json", sidecar, content_type="application/json")
 
     async def _box_stills(self, result, case_id, kept, detections) -> None:
         """Burn each detection's box onto the still it came from.
@@ -624,7 +674,9 @@ class Drill:
         result.frame_urls = urls
         return frames
 
-    async def _open_case(self, case_id, camera, detections, gate, frames) -> Case:
+    async def _open_case(
+        self, case_id, camera, detections, gate, frames, *, synthetic: bool = True
+    ) -> Case:
         detection = detections[-1]
         case = Case(
             id=case_id,
@@ -652,8 +704,9 @@ class Drill:
             box=detection.box,
             box_label=f"{detection.hazard_type.value} · {detection.confidence:.2f}",
             # The flag that keeps this out of the log, the statistics, the
-            # Auditor's queue and the filing path.
-            synthetic=True,
+            # Auditor's queue and the filing path. Off only for the seeded
+            # demonstration case, which is meant to sit among the real ones.
+            synthetic=synthetic,
         )
         await self.c.repository.save_case(case)
         await self.c.repository.append_trail(

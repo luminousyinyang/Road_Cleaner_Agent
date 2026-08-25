@@ -88,7 +88,7 @@
         </div>
 
         <ol class="drill__stages" id="run-stages">
-          {% for key, label in [("sample","Sample"),("look","Look"),("confirm","Confirm"),("resolve","Resolve"),("report","Report")] %}
+          {% for key, label in stages %}
           <li class="stage" data-stage="{{ key }}">
             <span class="stage__dot"></span>
             <span class="stage__label">{{ label }}</span>

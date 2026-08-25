@@ -92,10 +92,31 @@
     }
   }
 
+  /* A 404 mid-poll does not mean the run died.
+
+     Job state lives in the serving process, so a poll routed to a different
+     instance asks about a job that instance never started and is told, quite
+     correctly, that there is no such analysis. Treating the first one as fatal
+     abandoned runs that were still going -- the deploy config pins the service
+     to one instance for exactly this reason, but a cold start or a revision
+     rolling over can still produce a stray miss.
+
+     So a 404 is retried a few times before it is believed. Every other error is
+     still fatal immediately: a 500 is a real failure and pretending otherwise
+     would just make it take longer to surface. */
+  const MISSES_ALLOWED = 5;
+
   async function poll(jobId) {
+    let misses = 0;
     for (;;) {
       const response = await fetch(`/api/inspect/${encodeURIComponent(jobId)}`);
+      if (response.status === 404 && misses < MISSES_ALLOWED) {
+        misses += 1;
+        await wait(POLL_MS);
+        continue;
+      }
       if (!response.ok) throw new Error(await describe(response));
+      misses = 0;
       const job = await response.json();
 
       if (job.result) paint(job.result);

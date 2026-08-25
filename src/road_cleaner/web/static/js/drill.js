@@ -82,11 +82,21 @@
 
   function poll(jobId) {
     clearInterval(timer);
+    // A poll routed to another instance is told there is no such drill, about a
+    // drill that is still running where it started. Tolerated a few times before
+    // it is treated as lost; see inspect.js for the full reasoning.
+    let misses = 0;
+    const MISSES_ALLOWED = 5;
     timer = setInterval(async () => {
       let job;
       try {
         const r = await fetch(`/api/drill/${jobId}`);
+        if (r.status === 404 && misses < MISSES_ALLOWED) {
+          misses += 1;
+          return;
+        }
         if (!r.ok) throw new Error();
+        misses = 0;
         job = await r.json();
       } catch (err) {
         return fail("Lost track of the drill.");

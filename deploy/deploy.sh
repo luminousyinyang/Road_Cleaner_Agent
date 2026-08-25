@@ -84,6 +84,61 @@ ENV_VARS="${ENV_VARS},GOOGLE_CLOUD_LOCATION=global,VERTEX_MEDIA_LOCATION=${REGIO
 # The whole point of deploying is to show the real models working.
 ENV_VARS="${ENV_VARS},VISION_PROVIDER=gemini,USE_ADK=true,MEDIA_PROVIDER=vertex"
 
+# --- the live demonstration send -------------------------------------------
+#
+# These live in `.env`, which is excluded from the image on purpose -- secrets
+# do not belong in a layer. The consequence was quiet and confusing: the
+# deployed site had no recipient, no allowlist and no mail server, so
+# `/api/demo/send` reported itself unconfigured, the send button stayed hidden,
+# and the case page offered the ordinary manual handover instead. It looked like
+# the feature had not been deployed. It had; it just had nothing to send with.
+#
+# So they are read from the environment (or `.env`) at deploy time and passed
+# through -- everything except the password, which goes to Secret Manager. A
+# password in `--set-env-vars` is stored in plain text on the service config and
+# readable by anyone with Viewer on the project.
+SMTP_PASSWORD_VALUE=""
+if [[ -f .env ]]; then
+  # Only the keys this needs, and only if not already set in the environment.
+  while IFS='=' read -r key value; do
+    case "${key}" in
+      SMTP_HOST|SMTP_PORT|SMTP_USER|SMTP_PASSWORD|FILING_FROM_ADDRESS|DEMO_SEND_TO|LIVE_FILING_ALLOWLIST)
+        [[ -n "${!key:-}" ]] || printf -v "${key}" '%s' "${value}"
+        ;;
+    esac
+  done < <(grep -E '^(SMTP_|FILING_FROM_ADDRESS|DEMO_SEND_TO|LIVE_FILING_ALLOWLIST)' .env || true)
+fi
+
+if [[ -n "${DEMO_SEND_TO:-}" && -n "${LIVE_FILING_ALLOWLIST:-}" && -n "${SMTP_HOST:-}" ]]; then
+  say "Live demonstration send"
+  ENV_VARS="${ENV_VARS},DEMO_SEND_TO=${DEMO_SEND_TO},LIVE_FILING_ALLOWLIST=${LIVE_FILING_ALLOWLIST}"
+  ENV_VARS="${ENV_VARS},SMTP_HOST=${SMTP_HOST},SMTP_PORT=${SMTP_PORT:-587}"
+  ENV_VARS="${ENV_VARS},SMTP_USER=${SMTP_USER:-},FILING_FROM_ADDRESS=${FILING_FROM_ADDRESS:-${SMTP_USER:-}}"
+
+  if [[ -n "${SMTP_PASSWORD:-}" ]]; then
+    # Only enabled by --with-fleet otherwise, and this path needs it whether or
+    # not the jobs are being deployed.
+    gcloud services enable secretmanager.googleapis.com
+    gcloud secrets create road-cleaner-smtp-password --replication-policy=automatic \
+      2>/dev/null || true
+    printf '%s' "${SMTP_PASSWORD}" \
+      | gcloud secrets versions add road-cleaner-smtp-password --data-file=- >/dev/null
+    gcloud secrets add-iam-policy-binding road-cleaner-smtp-password \
+      --member="serviceAccount:${SERVICE_ACCOUNT}" \
+      --role=roles/secretmanager.secretAccessor >/dev/null
+    SMTP_SECRET="--set-secrets=SMTP_PASSWORD=road-cleaner-smtp-password:latest"
+    echo "  recipient ${DEMO_SEND_TO} · password in Secret Manager"
+  else
+    SMTP_SECRET=""
+    echo "  WARNING: no SMTP_PASSWORD found, so the send will fail to authenticate"
+  fi
+else
+  SMTP_SECRET=""
+  echo "  demonstration send not configured — set DEMO_SEND_TO, LIVE_FILING_ALLOWLIST"
+  echo "  and SMTP_* in .env to deploy it. The site works without it; the send"
+  echo "  button simply stays hidden."
+fi
+
 if [[ ${WITH_FIRESTORE} -eq 1 ]]; then
   say "Firestore"
   gcloud firestore databases create --location="${REGION}" 2>/dev/null \
@@ -109,14 +164,35 @@ say "Building and deploying the dashboard"
 # `run deploy --source .` runs Cloud Build for us and reads ./Dockerfile.
 # The previous script called `gcloud builds submit --file deploy/Dockerfile`,
 # and `builds submit` has no --file flag, so it never got this far.
+#
+# The instance flags below are load-bearing, not tuning. Drills, inspections,
+# demonstration sends and renders all keep their job registries in
+# `app.state.*` -- in the process, not in a database -- and the browser polls
+# `/api/inspect/{id}` for progress. That combination has exactly one safe shape
+# on Cloud Run:
+#
+# * `--max-instances=1`, because a poll routed to a second instance asks about a
+#   job that instance has never heard of and gets a 404. That is not
+#   hypothetical: a deployed run returned 200 five times and then 404, while the
+#   Gemini calls carried on in the logs -- the work was fine, the poll had simply
+#   landed somewhere else, and the page gave up on a run that was still going.
+# * `--min-instances=1`, because a cold start takes the same registries with it.
+# * `--no-cpu-throttling`, because the work runs in a task created *after* the
+#   202 is returned, and CPU outside request handling is throttled to almost
+#   nothing by default.
+#
+# Raising max-instances means moving job state out of the process first.
 gcloud run deploy road-cleaner-dashboard \
   --source . \
   --region="${REGION}" \
   --service-account="${SERVICE_ACCOUNT}" \
   --set-env-vars="${ENV_VARS}" \
+  ${SMTP_SECRET} \
   --allow-unauthenticated \
-  --min-instances=0 \
-  --max-instances=3 \
+  --min-instances=1 \
+  --max-instances=1 \
+  --no-cpu-throttling \
+  --session-affinity \
   --memory=2Gi \
   --cpu=2 \
   --timeout=600

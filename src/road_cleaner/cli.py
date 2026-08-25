@@ -804,5 +804,72 @@ async def _adopt(container, case, result, found, seen, narrative) -> None:
     await container.repository.save_case(case)
 
 
+DEMO_CASE_HELP = """Build the demonstration case that sits in the library.
+
+Runs the real pipeline once -- the kept Veo clip, real vision on five stills, the
+real confidence gate, the real jurisdiction rules -- and saves the result as an
+ordinary case rather than a drill. That is the only difference: `synthetic` is
+off, so it appears alongside the seeded cases instead of being filtered out of
+the library, the statistics and the log.
+
+Run it once and it stays in `data/road_cleaner.db`, which `deploy/bundle.py`
+ships. Re-run it to rebuild the case against fresh footage or a changed prompt.
+
+The gate can refuse. That is not a failure of this command -- it means two looks
+at that footage did not agree, and a case the gate would not open is not one to
+put in front of anybody. Re-run it, or fix the footage."""
+
+
+@app.command(name="demo-case", help=DEMO_CASE_HELP)
+def demo_case(
+    prompt: Annotated[
+        str, typer.Option(help="What the hazard is.")
+    ] = "a deep pothole in the right lane of I-75 near Atlanta",
+    state: Annotated[
+        str, typer.Option(help="Case id prefix, so it reads like its neighbours.")
+    ] = "GA",
+) -> None:
+    async def _build() -> None:
+        from road_cleaner.pipeline.drill import Drill, DrillError
+        from road_cleaner.ports.vision import VisionUnavailableError
+
+        container = build_container(_settings(), simulated=False)
+        await container.startup()
+        try:
+            console.print(f"[dim]running the pipeline over[/] {prompt}")
+            result = await Drill(container).run(
+                prompt, full=True, reuse_clip=True, case_prefix=state, synthetic=False
+            )
+        except DrillError as exc:
+            console.print(f"[red]The pipeline stopped:[/] {exc}")
+            raise typer.Exit(1) from exc
+        except VisionUnavailableError as exc:
+            # Not a `DrillError`, so it used to come out as a traceback. Vertex
+            # throttling is the most likely way this command fails and the least
+            # alarming, and a stack trace is the wrong way to say "wait a bit".
+            hint = (
+                " Vertex is rate-limiting; the quota resets on its own, so wait "
+                "and run this again."
+                if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc)
+                else ""
+            )
+            console.print(f"[red]The vision model was unavailable:[/] {exc}{hint}")
+            raise typer.Exit(1) from exc
+        finally:
+            await container.shutdown()
+
+        console.print(f"[green]case[/] {result.case_id}")
+        console.print(f"[dim]gate[/]    {result.gate_decision} — {result.gate_reason}")
+        console.print(f"[dim]agency[/]  {result.agency}")
+        console.print(f"[dim]stills[/]  {len(result.evidence_urls)} boxed")
+        if result.gate_decision != "file":
+            console.print(
+                "[yellow]The gate did not clear this for filing, so the case is "
+                "open but will not offer a send.[/]"
+            )
+
+    asyncio.run(_build())
+
+
 if __name__ == "__main__":
     app()
