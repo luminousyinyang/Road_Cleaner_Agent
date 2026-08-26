@@ -72,8 +72,8 @@ agencies:
     name: FDOT District 2
     level: state_dot
     state: FL
-    channel: email
-    email: district2-maintenance@example.invalid
+    channel: maintenance_form
+    endpoint: https://www.fdot.gov/info/ects/customer-service-portal
     ref_label: FDOT D2
     ref_format: SR-######
     jurisdiction_note: Northeast Florida, Jacksonville area.
@@ -82,8 +82,8 @@ agencies:
     name: FDOT District 4
     level: state_dot
     state: FL
-    channel: email
-    email: district4-maintenance@example.invalid
+    channel: maintenance_form
+    endpoint: https://www.fdot.gov/info/ects/customer-service-portal
     ref_label: FDOT D4
     ref_format: SR-######
     jurisdiction_note: >-
@@ -94,8 +94,8 @@ agencies:
     name: FDOT District 5
     level: state_dot
     state: FL
-    channel: email
-    email: district5-maintenance@example.invalid
+    channel: maintenance_form
+    endpoint: https://www.fdot.gov/info/ects/customer-service-portal
     ref_label: FDOT D5
     ref_format: SR-######
     jurisdiction_note: Central Florida, including the I-4 corridor.
@@ -104,8 +104,8 @@ agencies:
     name: FDOT District 6
     level: state_dot
     state: FL
-    channel: email
-    email: district6-maintenance@example.invalid
+    channel: maintenance_form
+    endpoint: https://www.fdot.gov/info/ects/customer-service-portal
     ref_label: FDOT D6
     ref_format: SR-######
     jurisdiction_note: Miami-Dade and the Keys.
@@ -114,8 +114,8 @@ agencies:
     name: FDOT District 7
     level: state_dot
     state: FL
-    channel: email
-    email: district7-maintenance@example.invalid
+    channel: maintenance_form
+    endpoint: https://www.fdot.gov/info/ects/customer-service-portal
     ref_label: FDOT D7
     ref_format: SR-######
     jurisdiction_note: Tampa Bay area.
@@ -124,8 +124,8 @@ agencies:
     name: Florida's Turnpike Enterprise
     level: toll_authority
     state: FL
-    channel: email
-    email: turnpike-maintenance@example.invalid
+    channel: maintenance_form
+    endpoint: https://www.fdot.gov/info/ects/customer-service-portal
     ref_label: TURNPIKE
     ref_format: SR-######
     sla_overrides:
@@ -296,8 +296,7 @@ agencies:
     name: Arizona DOT
     level: state_dot
     state: AZ
-    channel: email
-    email: info@azdot.gov
+    channel: maintenance_form
     endpoint: https://azdot.gov/contact-us
     ref_label: ARIZONA DOT
     ref_format: RC-AZ-#####
@@ -657,7 +656,8 @@ agencies:
     name: TDOT
     level: state_dot
     state: TN
-    channel: maintenance_form
+    channel: email
+    email: TDOT.Comments@tn.gov
     endpoint: https://www.tn.gov/tdot/engineering-operations-division/potholes.html
     ref_label: TDOT
     ref_format: RC-TN-#####

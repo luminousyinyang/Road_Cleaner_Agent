@@ -57,8 +57,17 @@
              a button. The demo is the explanation. --- #}
       {% set clip = (media | selectattr("kind", "equalto", "video") | list | first) if media else none %}
       {% if clip %}
+      {# A full-automation case starts blank, always.
+
+         It used to repaint whatever the last run left behind, which made the
+         page look like it had already done the work and made every case look
+         different depending on whether a sidecar happened to exist -- GA-4465
+         arrived with a finished Gemini analysis under it and its neighbours did
+         not. On this ending the promise is "press it and watch", so there is
+         nothing to show until somebody presses it. #}
       <section class="run" id="run"
                data-case="{{ d.case.id }}"
+               data-mode="{{ mode }}"
                {% if analysis %}data-analysis='{{ analysis | tojson }}'{% endif %}>
 
         <div class="run__stage">
@@ -71,8 +80,14 @@
             <div class="run__boxes" id="run-boxes"></div>
           </div>
 
+          {# One button, whichever ending this is. There used to be two on a
+             full-automation page -- this one, which sends to the demonstration
+             inbox, and a second below that sends to you. Both were live, and
+             the wrong one was the easier to reach. #}
           <div class="run__controls">
-            <button class="btn btn--primary" id="run-start">Run the agent on this clip</button>
+            <button class="btn btn--primary" id="run-start">
+              {{ "Run it and email me" if mode == 'auto' else "Run the agent on this clip" }}
+            </button>
             <span class="run__status" id="run-status">
               {% if analysis %}
                 Last run {{ analysis.analyzed_at[:16] | replace("T", " ") if analysis.analyzed_at else "earlier" }}
@@ -82,9 +97,16 @@
               {% endif %}
             </span>
           </div>
+          {% if mode == 'auto' %}
+          <p class="run__note">
+            Two vision calls, then it sends the report to your inbox — not to
+            {{ d.agency or "the agency" }}, because this road was generated.
+          </p>
+          {% else %}
           <p class="run__note" id="run-note" {{ "hidden" if not (analysis and analysis.from_cache) }}>
             {{ analysis.cache_note if analysis else "" }}
           </p>
+          {% endif %}
         </div>
 
         <ol class="drill__stages" id="run-stages">
@@ -126,26 +148,11 @@
              function the library uses to decide which section this case sits
              in. A card that promised to email you must not land on a page whose
              only button hands you a draft to send by hand. #}
-          {% if mode == 'auto' %}
-          <div class="run__send act act--auto" data-run="{{ d.id }}">
-            <button class="btn btn--primary run-go" type="button">Run it and email me</button>
-            <p class="act__cost">
-              Runs the whole pipeline again and sends the report to your inbox —
-              not to {{ analysis.agency if analysis and analysis.agency else "the agency" }},
-              because this road was generated.
-            </p>
-            <ol class="act__stages" hidden>
-              {% for key, label in stages %}
-              <li class="stage" data-stage="{{ key }}">
-                <span class="stage__dot"></span>
-                <span class="stage__label">{{ label }}</span>
-                <span class="stage__detail"></span>
-              </li>
-              {% endfor %}
-            </ol>
-            <p class="act__outcome" hidden></p>
-          </div>
-          {% else %}
+          {# Nothing here on the automation ending. The run finishes by sending,
+             and the Send stage above reports where it went -- a second button
+             offering to hand you a draft would be offering to do again, by
+             hand, the thing that just happened by itself. #}
+          {% if mode != 'auto' %}
           <div class="run__send">
             <button class="btn btn--primary" id="run-send"
                     data-agency="{{ analysis.agency if analysis else '' }}">

@@ -87,17 +87,84 @@ const signInButton = document.querySelector("[data-auth-signin]");
 const signOutButton = document.querySelector("[data-auth-signout]");
 const whoSlot = document.querySelector("[data-auth-who]");
 const emailSlot = document.querySelector("[data-auth-email]");
+const nameSlot = document.querySelector("[data-auth-name]");
+const avatarSlot = document.querySelector("[data-auth-avatar]");
+const initialSlot = document.querySelector("[data-auth-initial]");
+const accountToggle = document.querySelector("[data-account-toggle]");
+const accountMenu = document.querySelector("[data-account-menu]");
 const authOnly = document.querySelectorAll("[data-auth-only]");
 
 function paint(user) {
   if (control) control.hidden = false;
   if (signInButton) signInButton.hidden = Boolean(user);
   if (whoSlot) whoSlot.hidden = !user;
-  if (emailSlot) emailSlot.textContent = user ? user.email || user.uid : "";
   authOnly.forEach((el) => {
     el.hidden = !user;
   });
+
+  if (!user) {
+    closeAccountMenu();
+    return;
+  }
+
+  const email = user.email || user.uid || "";
+  if (emailSlot) emailSlot.textContent = email;
+  // Google usually supplies a display name; the address is the fallback, and
+  // the line is dropped entirely rather than repeating the email twice.
+  if (nameSlot) {
+    nameSlot.textContent = user.displayName || "";
+    nameSlot.hidden = !user.displayName;
+  }
+  // The letter shows through whenever the photo is missing or fails to load --
+  // it sits behind the image rather than being swapped in, so there is no
+  // moment where the chip is empty.
+  if (initialSlot) initialSlot.textContent = (email[0] || "?").toUpperCase();
+  if (avatarSlot) {
+    if (user.photoURL) {
+      avatarSlot.src = user.photoURL;
+      avatarSlot.hidden = false;
+      avatarSlot.onerror = () => {
+        avatarSlot.hidden = true;
+      };
+    } else {
+      avatarSlot.hidden = true;
+    }
+  }
 }
+
+/* --- the account menu ---------------------------------------------------
+   A popover rather than an inline row. The address is the widest thing in the
+   header and the only one whose length nobody controls, so rendering it inline
+   let one long address set the width of the whole nav and wrap the row. */
+
+function openAccountMenu() {
+  if (!accountMenu) return;
+  accountMenu.hidden = false;
+  accountToggle?.setAttribute("aria-expanded", "true");
+}
+
+function closeAccountMenu() {
+  if (!accountMenu) return;
+  accountMenu.hidden = true;
+  accountToggle?.setAttribute("aria-expanded", "false");
+}
+
+accountToggle?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (accountMenu?.hidden) openAccountMenu();
+  else closeAccountMenu();
+});
+
+// Anywhere else, or Escape. A menu that only closes via its own button is a
+// menu people leave open by accident.
+document.addEventListener("click", (event) => {
+  if (accountMenu && !accountMenu.hidden && !event.target.closest(".account")) {
+    closeAccountMenu();
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeAccountMenu();
+});
 
 function announce(user) {
   currentUser = user;

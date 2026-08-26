@@ -49,8 +49,10 @@ a:hover { color: var(--rust); }
 .nav__links { display: flex; gap: 22px; font-size: 14px; }
 .nav__links a { color: var(--muted); }
 .nav__links a.is-active { color: var(--ink); }
+/* The push to the right edge moved to `.nav__right`, which wraps this and the
+   account chip. Left here it would have applied inside that flex row instead,
+   splitting the pair apart. */
 .nav__status {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -58,19 +60,23 @@ a:hover { color: var(--rust); }
   font-size: 11px;
   color: var(--muted);
 }
-/* Sits after the status line rather than taking its `margin-left: auto`, so
-   the two read as one right-hand cluster instead of fighting for the edge. */
+/* The right-hand cluster. Takes the `margin-left: auto` that used to sit on
+   `.nav__status`, so the status line and the account chip move together instead
+   of the chip being the one thing that wraps. */
+.nav__right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
 .nav__auth {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--muted);
 }
-.nav__who { display: inline-flex; align-items: center; gap: 10px; }
-.nav__signin,
-.nav__signout {
+.nav__signin {
   font: inherit;
   color: var(--ink);
   background: none;
@@ -79,9 +85,89 @@ a:hover { color: var(--rust); }
   padding: 5px 12px;
   cursor: pointer;
 }
-.nav__signin:hover,
-.nav__signout:hover { border-color: var(--ink); }
+.nav__signin:hover { border-color: var(--ink); }
 .nav__signin[disabled] { opacity: 0.5; cursor: progress; }
+
+/* --- the account chip -------------------------------------------------
+   Fixed at avatar width whatever the address is. The email used to render
+   inline here, which made the longest thing in the header a value nobody
+   controls -- one long address set the width of the nav and wrapped the row. */
+.account { position: relative; display: inline-flex; }
+.account__chip {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--paper-2, #F3F2EC);
+  cursor: pointer;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.account__chip:hover { border-color: var(--ink); }
+.account__chip[aria-expanded="true"] { border-color: var(--ink); }
+/* The initial sits underneath the photo rather than instead of it, so a slow
+   or broken avatar never leaves an empty circle. */
+.account__initial {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  line-height: 1;
+}
+.account__avatar {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.account__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  min-width: 210px;
+  max-width: 300px;
+  padding: 14px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(26, 26, 24, 0.13);
+  text-align: left;
+}
+.account__name {
+  margin: 0 0 2px;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.account__email {
+  margin: 0 0 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  /* Long addresses wrap inside the menu, where there is room for them. */
+  overflow-wrap: anywhere;
+}
+.account__signout {
+  font-family: var(--mono);
+  font-size: 11px;
+  width: 100%;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.account__signout:hover { border-color: var(--ink); }
 
 .dot {
   width: 6px; height: 6px;

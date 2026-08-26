@@ -66,19 +66,52 @@
     }
   }
 
+  /* Which ending this page is, and therefore where the report goes.
+   *
+   * `auto`      -> POST /automate. Sends to the signed-in person, and every
+   *                request on the run carries their token.
+   * `assisted`  -> POST /inspect. Sends to the demonstration inbox if the
+   *                deployment has one, and composes only if it does not.
+   *
+   * These were briefly two separate buttons on the same page. Both were live,
+   * and `/inspect` was the easier of the two to reach -- so pressing the
+   * obvious control on a page that said "it emails you" sent the report to
+   * DEMO_SEND_TO instead. One control, and the mode decides what it does.
+   */
+  const auto = root.dataset.mode === "auto";
+  const auth = window.RoadCleaner?.auth;
+
+  /* Every request belonging to an automated run is authenticated -- the start
+     *and* the polls. The poll matters as much as the start: a run with a
+     recipient is readable only by that recipient, so an unauthenticated poll
+     is answered with a 404 and the page sits on the last stage it saw while
+     the run finishes and the mail goes out behind it. */
+  function request(url, options) {
+    return auto && auth ? auth.fetch(url, options) : fetch(url, options);
+  }
+
   startButton.addEventListener("click", start);
 
   async function start() {
+    // The automated ending finishes by sending mail, so it needs an inbox.
+    // Asking here means the explanation arrives before the Vertex calls.
+    if (auto && !(auth?.enabled && auth.user)) {
+      document.getElementById("signin-modal")?.showModal();
+      return;
+    }
+
     startButton.disabled = true;
     startButton.textContent = "Running…";
     errorSlot.hidden = true;
     running = true;
     clearFrames();
 
+    const endpoint = auto ? "automate" : "inspect";
     try {
-      const response = await fetch(`/api/cases/${encodeURIComponent(caseId)}/inspect`, {
-        method: "POST",
-      });
+      const response = await request(
+        `/api/cases/${encodeURIComponent(caseId)}/${endpoint}`,
+        { method: "POST" }
+      );
       if (!response.ok) throw new Error(await describe(response));
       await poll((await response.json()).id);
     } catch (err) {
@@ -88,7 +121,7 @@
       running = false;
       syncToPlayhead();
       startButton.disabled = false;
-      startButton.textContent = "Run it again";
+      startButton.textContent = auto ? "Run it again and email me" : "Run it again";
     }
   }
 
@@ -109,7 +142,7 @@
   async function poll(jobId) {
     let misses = 0;
     for (;;) {
-      const response = await fetch(`/api/inspect/${encodeURIComponent(jobId)}`);
+      const response = await request(`/api/inspect/${encodeURIComponent(jobId)}`);
       if (response.status === 404 && misses < MISSES_ALLOWED) {
         misses += 1;
         await wait(POLL_MS);

@@ -38,16 +38,37 @@
          data-auth-only hidden>My incidents</a>
       <a href="/about" class="{{ 'is-active' if active == 'about' }}">How it works</a>
     </div>
-    <span class="nav__status"><span class="dot"></span>watching now</span>
-    {# Both states are rendered and auth.js hides one. A sign-in button that
-       appears a beat after the page does reads as a glitch. #}
-    <span class="nav__auth" data-auth-control hidden>
-      <button class="nav__signin" data-auth-signin type="button" hidden>Sign in</button>
-      <span class="nav__who" data-auth-who hidden>
-        <span data-auth-email></span>
-        <button class="nav__signout" data-auth-signout type="button">Sign out</button>
+    {# The right-hand cluster. Grouped so the pair moves as one unit and the
+       account chip cannot be pushed onto a second row on its own. #}
+    <div class="nav__right">
+      <span class="nav__status"><span class="dot"></span>watching now</span>
+
+      {# Both states are rendered and auth.js hides one. A sign-in button that
+         appears a beat after the page does reads as a glitch. #}
+      <span class="nav__auth" data-auth-control hidden>
+        <button class="nav__signin" data-auth-signin type="button" hidden>Sign in</button>
+
+        {# Signed in: a chip the width of an avatar, whatever the address is.
+           The email itself lives in the menu behind it -- rendered inline it
+           set the width of the whole nav, and a long one wrapped the row. #}
+        <div class="account" data-auth-who hidden>
+          <button class="account__chip" type="button" data-account-toggle
+                  aria-haspopup="menu" aria-expanded="false" aria-label="Your account">
+            <img class="account__avatar" data-auth-avatar alt="" hidden
+                 referrerpolicy="no-referrer" width="26" height="26">
+            <span class="account__initial" data-auth-initial aria-hidden="true"></span>
+          </button>
+
+          <div class="account__menu" data-account-menu role="menu" hidden>
+            <p class="account__name" data-auth-name></p>
+            <p class="account__email" data-auth-email></p>
+            <button class="account__signout" data-auth-signout type="button" role="menuitem">
+              Sign out
+            </button>
+          </div>
+        </div>
       </span>
-    </span>
+    </div>
   </nav>
 </div>
 {% endblock %}

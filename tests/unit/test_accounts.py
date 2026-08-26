@@ -233,6 +233,48 @@ class TestConcurrentRunsAreNotShared:
         assert "me@example.com" not in str(job.as_dict())
 
 
+class TestTheAgencyRegistryPublishesNothingFake:
+    """Every agency has a route, and no route is invented.
+
+    The registry shipped six `district5-maintenance@example.invalid` style
+    addresses and two that do not appear on the agency's own contact page
+    (`contact@dot.ga.gov`, `info@azdot.gov` -- GDOT publishes only an open
+    records inbox, ADOT publishes none). A demo that composes a hazard report
+    addressed to an invented government address is one somebody might actually
+    send, so the rule is: a real published address or a real published form,
+    and nothing else.
+    """
+
+    @staticmethod
+    def _agencies():
+        import yaml
+
+        from road_cleaner.config import SEEDS_DIR
+
+        return yaml.safe_load((SEEDS_DIR / "agencies.yaml").read_text())["agencies"]
+
+    def test_no_placeholder_addresses(self):
+        fake = [a["id"] for a in self._agencies() if ".invalid" in (a.get("email") or "")]
+        assert fake == [], f"placeholder addresses are back: {fake}"
+
+    def test_every_agency_can_be_reached_somehow(self):
+        """An agency with neither an inbox nor a form is a dead end: the
+        handover dialog opens naming somebody it cannot tell you how to reach."""
+        stranded = [
+            a["id"] for a in self._agencies() if not a.get("email") and not a.get("endpoint")
+        ]
+        assert stranded == [], f"no route on file for: {stranded}"
+
+    def test_an_email_channel_always_has_an_address(self):
+        """`mailto:` with nothing before the `?` opens nothing at all."""
+        broken = [
+            a["id"]
+            for a in self._agencies()
+            if a.get("channel") == "email" and not a.get("email")
+        ]
+        assert broken == [], f"email channel with no address: {broken}"
+
+
 class TestAuthUser:
     def test_only_a_verified_address_is_mailable(self):
         """The whole basis for mailing somebody without a human approving it."""

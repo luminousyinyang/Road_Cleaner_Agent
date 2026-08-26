@@ -961,7 +961,9 @@ class TestSendHandsOverWithoutNavigating:
             pytest.skip("this case has no clip")
         assert 'id="run-handover"' not in body
         assert 'id="run-send"' not in body
-        assert "run-go" in body
+        # The single run control, relabelled. It used to be a second button
+        # alongside `#run-start`; see the one-run-button test above.
+        assert "Run it and email me" in body
 
     def test_the_page_never_ships_an_unconditional_redirect(self, client):
         """The mechanism, guarded at the source.
@@ -1033,6 +1035,49 @@ class TestTheTwoLibraryModes:
     def test_a_missing_case_is_a_404(self, client):
         assert client.get("/api/cases/NOPE-1/handover").status_code == 404
         assert client.post("/api/cases/NOPE-1/automate").status_code in (401, 404, 501)
+
+    def test_an_automation_page_offers_exactly_one_run_button(self, client, populated):
+        """It shipped with two, and the wrong one was easier to reach.
+
+        `#run-start` posts to `/inspect`, which has no recipient and falls
+        through to DEMO_SEND_TO. On a page promising "it emails you" that sent
+        the report to the operator's inbox instead of the reader's. One control,
+        and `data-mode` decides where it posts.
+        """
+        from road_cleaner.web.serializers import mode_for
+
+        _, cases = populated
+        auto = next((c for c in cases if mode_for(c.id) == "auto"), None)
+        if auto is None:
+            pytest.skip("no auto case in this fixture")
+
+        body = client.get(f"/cases/{auto.id}").text
+        if "run__missing" in body:
+            pytest.skip("this case has no clip")
+
+        assert body.count('id="run-start"') == 1
+        assert "act--auto" not in body, "the second, duplicate run button is back"
+        assert 'data-mode="auto"' in body
+
+    def test_an_automation_page_starts_blank(self, client, populated):
+        """Every automation case looks the same before it is run.
+
+        It used to repaint the last run's result, so a case with a cached
+        sidecar arrived showing a finished report and its neighbours arrived
+        empty — the same ending rendering two different ways depending on
+        whether somebody had happened to run it before.
+        """
+        from road_cleaner.web.serializers import mode_for
+
+        _, cases = populated
+        for case in cases:
+            if mode_for(case.id) != "auto":
+                continue
+            body = client.get(f"/cases/{case.id}").text
+            if "run__missing" in body:
+                continue
+            assert "data-analysis" not in body, f"{case.id} opens pre-filled"
+            assert "Not run yet." in body
 
     def test_a_cases_mode_does_not_move_when_the_library_is_filtered(self, client):
         """It was index parity over the *filtered* list, which reshuffled the
@@ -1250,11 +1295,20 @@ class TestTheDashcamReportsToTheRightAgency:
 
     def test_an_email_appears_only_where_one_is_published(self, client):
         """Most state DOTs route through a form on purpose. Inventing an address
-        for the others would be the worst possible way to fill this field."""
+        for the others would be the worst possible way to fill this field.
+
+        Tennessee is the example of a state that does publish one, and as far as
+        thirteen checked contact pages go it is the only one. Arizona used to
+        stand here on the strength of `info@azdot.gov` — an address that appears
+        nowhere on ADOT's own contact page, which directs the public to an
+        online reporting tool instead. It has been removed from the registry
+        along with GDOT's `contact@dot.ga.gov` and six `example.invalid`
+        placeholders.
+        """
         ohio = self._report(client).json()
-        arizona = self._report(client, lat=33.4484, lng=-112.0740).json()
+        tennessee = self._report(client, lat=36.1627, lng=-86.7816).json()
         assert ohio["email"] is None and ohio["endpoint"].startswith("https://")
-        assert arizona["email"] == "info@azdot.gov"
+        assert tennessee["email"] == "TDOT.Comments@tn.gov"
 
     def test_a_coordinate_we_cannot_file_about_is_refused(self, client):
         for lat, lng in [(35.0, -140.0), (61.2, -149.9), (0.0, 0.0)]:

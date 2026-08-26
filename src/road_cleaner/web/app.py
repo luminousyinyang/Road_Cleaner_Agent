@@ -448,8 +448,20 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 "media": S.media_for_case(c.settings.media_local_path, case_id),
                 # The last time the agent was run over this clip, so the page
                 # opens on a real result rather than an empty frame.
-                "analysis": S.last_analysis(
-                    c.settings.media_local_path, case_id, detail, c.settings
+                #
+                # Withheld on the automation ending, on purpose. That page
+                # promises "press it and watch it work", and opening on a
+                # finished report from a previous run contradicts it -- worse,
+                # it made cases look unlike each other purely by whether a
+                # cached sidecar happened to exist. GA-4465 arrived with a full
+                # Gemini analysis under it and its neighbours arrived blank.
+                # Every automation case now starts from the same empty state.
+                "analysis": (
+                    None
+                    if S.mode_for(case_id) == "auto"
+                    else S.last_analysis(
+                        c.settings.media_local_path, case_id, detail, c.settings
+                    )
                 ),
                 # A hazard we decline to simulate will never have a clip, so the
                 # page says that rather than pointing at a library card that is
