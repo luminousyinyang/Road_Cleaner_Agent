@@ -177,11 +177,15 @@ a:hover { color: var(--rust); }
 }
 
 /* --------------------------------------------------------------- hero */
+/* Asymmetric, and the picture takes the larger half. It used to be a 420px
+   column holding an illustration; it now holds a frame of the footage, and a
+   dashcam frame is 16:9 -- at 420px that is a 236px-tall strip with no
+   presence next to a 68px headline. */
 .hero {
   padding: 58px 0 0;
   display: grid;
-  grid-template-columns: 1fr 420px;
-  gap: 60px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: 56px;
   align-items: center;
 }
 .hero h1 {
@@ -200,7 +204,7 @@ a:hover { color: var(--rust); }
   max-width: 46ch;
   margin: 0;
 }
-.hero__art svg { width: 100%; height: auto; display: block; }
+.hero__art { min-width: 0; }
 
 /* --------------------------------------------------- stat band (dark) */
 .band {
@@ -1712,4 +1716,180 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
   font-size: 10.5px;
   line-height: 1.65;
   color: var(--muted);
+}
+
+/* ------------------------------------------------- the hero shot
+ *
+ * A real frame from a real run, with the box the model actually returned.
+ * Percentages below are the fractional coordinates out of the analysis
+ * sidecar, multiplied by 100 -- see `partials/hero_art.html`. Changing them to
+ * make the animation prettier would make the picture a lie, so don't.
+ */
+.shot { margin: 0; }
+.shot__frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1A1A18;
+  border: 1px solid var(--rule-2);
+  /* Sits it slightly off the page rather than flat on it. */
+  box-shadow: 0 18px 44px -22px rgba(26, 26, 24, 0.45);
+}
+.shot__still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  animation: rc-shot 9s steps(1, end) infinite;
+}
+/* Three frames, three seconds each, hard cuts. A cross-fade would smear two
+   different distances together and lose the sense of closing on the object. */
+@keyframes rc-shot {
+  0%, 33.33% { opacity: 1; }
+  33.34%, 100% { opacity: 0; }
+}
+
+.shot__box {
+  position: absolute;
+  border: 2px solid var(--rust);
+  /* A halo, so a box a few pixels tall still separates from grey asphalt. */
+  box-shadow: 0 0 0 1px rgba(250, 250, 248, 0.35);
+  animation: rc-track 9s steps(1, end) infinite;
+}
+/* The three looks, held for three seconds each and cut between -- the same
+   timing as the frames, so the box is never over the wrong one.
+ *
+ * Tint, border weight and radius are all per-keyframe rather than set once.
+ * At the first look the box is 2.9% x 1.3% -- about 15x4px on the rendered
+ * panel -- and a 2px border top and bottom leaves it with no interior at all,
+ * while a 2px radius rounds what is left into a pill. The result read as an
+ * orange lozenge somebody had dropped on the road rather than a detector
+ * finding something. So the far look gets a hairline and square corners, and
+ * the fill waits until there is an inside to tint.
+ */
+@keyframes rc-track {
+  0%, 33.33% {
+    left: 48.5%; top: 35.1%; width: 2.9%; height: 1.3%;
+    background: transparent;
+    border-width: 1px;
+    border-radius: 0;
+  }
+  33.34%, 66.66% {
+    left: 41.7%; top: 47.3%; width: 16.8%; height: 4.4%;
+    background: rgba(180, 69, 31, 0.10);
+    border-width: 2px;
+    border-radius: 1px;
+  }
+  66.67%, 100% {
+    left: 36.9%; top: 67.7%; width: 28.9%; height: 8.3%;
+    background: rgba(180, 69, 31, 0.12);
+    border-width: 2px;
+    border-radius: 2px;
+  }
+}
+
+.shot__tag {
+  position: absolute;
+  left: -2px;
+  bottom: calc(100% + 3px);
+  background: var(--rust);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+/* One tag per look that has one, each on its own third of the cycle. Text
+   cannot be animated, and the confidence genuinely differs between looks. */
+.shot__tag { opacity: 0; }
+.shot__tag--mid { animation: rc-tag-mid 9s steps(1, end) infinite; }
+.shot__tag--near { animation: rc-tag-near 9s steps(1, end) infinite; }
+@keyframes rc-tag-mid {
+  0%, 33.33% { opacity: 0; }
+  33.34%, 66.66% { opacity: 1; }
+  66.67%, 100% { opacity: 0; }
+}
+@keyframes rc-tag-near {
+  0%, 66.66% { opacity: 0; }
+  66.67%, 100% { opacity: 1; }
+}
+
+.shot__scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 26%;
+  background: linear-gradient(
+    to bottom,
+    rgba(217, 162, 39, 0) 0%,
+    rgba(217, 162, 39, 0.22) 50%,
+    rgba(217, 162, 39, 0) 100%
+  );
+  animation: rc-sweep 9s cubic-bezier(.45, 0, .2, 1) infinite;
+}
+@keyframes rc-sweep {
+  0% { transform: translateY(-30%); opacity: 0; }
+  8% { opacity: 1; }
+  28% { opacity: 1; }
+  33%, 100% { transform: translateY(420%); opacity: 0; }
+}
+
+.shot__chip {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #EFEEE6;
+  background: rgba(14, 17, 22, 0.72);
+  border: 1px solid rgba(239, 238, 230, 0.22);
+  border-radius: 3px;
+  padding: 3px 7px;
+}
+
+/* Grain. Veo output is clean to the point of looking rendered; a little noise
+   puts it back in the register of footage somebody's windscreen camera shot. */
+.shot__grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.14;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.shot__cap {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  margin-top: 11px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.shot__cap code { font-family: var(--mono); color: var(--ink-2); }
+.shot__filed { color: var(--green); white-space: nowrap; }
+
+/* Motion is decoration here. Held on the clearest of the three looks, which is
+   the one worth seeing if you only see one. */
+@media (prefers-reduced-motion: reduce) {
+  .shot__still { opacity: 0; }
+  .shot__still:last-of-type { opacity: 1; }
+  .shot__box {
+    left: 36.9%; top: 67.7%; width: 28.9%; height: 8.3%;
+    background: rgba(180, 69, 31, 0.12);
+    border-width: 2px;
+    border-radius: 2px;
+  }
+  .shot__tag--near { opacity: 1; }
+  .shot__scan { display: none; }
 }

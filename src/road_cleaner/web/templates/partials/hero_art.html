@@ -1,141 +1,59 @@
-{# The hero illustration: a road running to a vanishing point, a camera
-   watching it from the shoulder, a scan sweeping down, and a detection box
-   locking onto the tyre in lane one.
+{# The hero: the product's own output, not an illustration of it.
 
-   Generated, not hand-drawn. Every coordinate comes from one vanishing point
-   at (226, 152) and the depth law `y = 152 + 268/d`, so the lane markings all
-   converge on the same point and narrow at the same rate, and the pole is
-   sized as a multiple of its own distance below the horizon. The version
-   before this placed its markings by hand: they leaned inward without ever
-   agreeing on where they were leaning to, and the camera stood in the middle
-   of the carriageway. Regenerate with `design_artifacts/hero_art.py`.
+   Three frames from the clip Veo generated for GA-4463 -- a shed truck tyre on
+   a three-lane interstate, which is the thing the headline beside it opens by
+   talking about. They are the three the analyser actually looked at, in order,
+   and the box over them is positioned from the fractional coordinates Gemini
+   returned for each one:
 
-   Decorative only. Nothing here is data-driven, and the numbers on the label
-   are illustrative. #}
-<svg viewBox="0 0 440 420" role="img"
-     aria-label="A road running to the horizon, watched by a roadside camera, with debris in the near lane picked out by a detection box">
-  <defs>
-    <linearGradient id="rc-sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#E8E7DF"/>
-      <stop offset="70%" stop-color="#F4F3ED"/>
-      <stop offset="100%" stop-color="#FAFAF8"/>
-    </linearGradient>
-    <linearGradient id="rc-tarmac" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#3A3A36"/>
-      <stop offset="55%" stop-color="#262623"/>
-      <stop offset="100%" stop-color="#1C1C1A"/>
-    </linearGradient>
-    <linearGradient id="rc-beam" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#D9A227" stop-opacity="0"/>
-      <stop offset="50%" stop-color="#D9A227" stop-opacity="0.42"/>
-      <stop offset="100%" stop-color="#D9A227" stop-opacity="0"/>
-    </linearGradient>
-    <!-- Haze at the horizon. Distant things losing contrast is most of what
-         makes a flat drawing read as depth. -->
-    <linearGradient id="rc-haze" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#F4F3ED" stop-opacity="0.95"/>
-      <stop offset="100%" stop-color="#F4F3ED" stop-opacity="0"/>
-    </linearGradient>
-    <clipPath id="rc-road">
-      <polygon points="226.0,152.0 446.0,420.0 -6.0,420.0"/>
-    </clipPath>
-  </defs>
+     0.4s  x .485  y .351  w .029  conf 0.95   a smudge a hundred metres out
+     2.2s  x .417  y .473  w .168  conf 0.98   close enough to be sure
+     4.0s  x .369  y .677  w .289  conf 0.95   alongside
 
-  <rect width="440" height="420" fill="url(#rc-sky)"/>
+   So the box does not sweep decoratively -- it tracks, because those are the
+   numbers. Nothing here is cropped, which is what lets the fractions land
+   without a transform.
 
-  <!-- ground -->
-  <rect x="0" y="152.0" width="440" height="268.0" fill="#E4E3DA"/>
-  <rect x="0" y="152.0" width="440" height="268.0" fill="#DEDDD3" opacity="0.5"/>
+   This replaced a hand-drawn SVG road. The drawing was fine and it was still a
+   drawing of a detector, on a page whose entire claim is that the detector
+   works; a real frame with the real box on it makes the claim instead of
+   illustrating it.
 
-  <!-- the carriageway -->
-  <polygon points="226.0,152.0 446.0,420.0 -6.0,420.0"
-           fill="url(#rc-tarmac)"/>
+   Labelled synthetic, like every other piece of generated media on the site. #}
+<figure class="shot" aria-label="Dashcam footage of a shed truck tyre on an interstate, with the detection box tracking it across three frames">
+  <div class="shot__frame">
+    {% for i in range(3) %}
+    <img class="shot__still" src="/static/img/hero-{{ i }}.jpg?v={{ v }}"
+         alt="{{ 'The tyre a hundred metres ahead, barely resolved' if i == 0
+               else ('The tyre at closer range, confirmed' if i == 1
+               else 'The tyre alongside, the clearest look') }}"
+         {% if i == 0 %}fetchpriority="high"{% else %}loading="lazy"{% endif %}
+         style="animation-delay: {{ i * 3 }}s">
+    {% endfor %}
 
-  <g clip-path="url(#rc-road)">
-    <!-- edge lines -->
-    <g fill="#EFEEE6" opacity="0.85">
-      <polygon points="4.3,420.0 15.3,420.0 219.0,160.9 218.6,160.9"/><polygon points="424.7,420.0 435.7,420.0 233.0,160.9 232.6,160.9"/>
-    </g>
-    <!-- lane dividers -->
-    <g fill="#EFEEE6" opacity="0.34">
-      <polygon points="97.2,404.8 104.7,404.8 121.4,370.0 114.9,370.0"/><polygon points="153.6,294.0 157.9,294.0 167.3,274.4 163.6,274.4"/><polygon points="185.3,231.8 187.7,231.8 193.0,220.8 190.9,220.8"/><polygon points="203.2,196.8 204.5,196.8 207.5,190.6 206.3,190.6"/><polygon points="336.0,404.8 343.5,404.8 327.3,370.0 320.8,370.0"/><polygon points="287.8,294.0 292.0,294.0 282.9,274.4 279.3,274.4"/><polygon points="260.7,231.8 263.1,231.8 258.0,220.8 255.9,220.8"/><polygon points="245.5,196.8 246.8,196.8 244.0,190.6 242.8,190.6"/>
-    </g>
-    <!-- centre line -->
-    <g fill="#D9A227">
-      <polygon points="213.7,414.7 226.5,414.7 226.4,371.0 215.8,371.0"/><polygon points="218.4,314.2 226.3,314.2 226.3,287.2 219.7,287.2"/><polygon points="221.3,252.1 226.2,252.1 226.2,235.4 222.1,235.4"/><polygon points="223.1,213.8 226.1,213.8 226.1,203.5 223.6,203.5"/><polygon points="224.2,190.1 226.1,190.1 226.1,183.8 224.5,183.8"/><polygon points="224.9,175.5 226.0,175.5 226.0,171.6 225.1,171.6"/>
-    </g>
-  </g>
+    {# The box. One element that moves between the three sets of coordinates
+       rather than three that fade, so it reads as a lock following an object
+       instead of three separate detections. #}
+    {# The confidence changes between looks and so does the label -- 0.98 is
+       what the model returned at 2.2s, when the tyre is closest to unambiguous.
+       One static number across all three would quietly contradict the point of
+       using the real coordinates. The far look carries no tag: at 15px wide the
+       chip is several times the width of the thing it is labelling. #}
+    <div class="shot__box" aria-hidden="true">
+      <span class="shot__tag shot__tag--mid">debris · 0.98</span>
+      <span class="shot__tag shot__tag--near">debris · 0.95</span>
+    </div>
 
-  <!-- the hazard: a shed tyre lying across the near lane -->
-  <g clip-path="url(#rc-road)">
-    <ellipse cx="171.9" cy="318.4"
-             rx="30.5" ry="6.3" fill="#0E0E0D" opacity="0.55"/>
-    <ellipse cx="167.9" cy="313.4" rx="26.5" ry="9.0" fill="#131312"/>
-    <ellipse cx="184.4" cy="311.5"
-             rx="12.2" ry="6.5" fill="#171614"/>
-    <ellipse cx="161.0" cy="310.4"
-             rx="13.3" ry="3.8" fill="#302E2A"/>
-    <ellipse cx="160.0" cy="310.7"
-             rx="5.8" ry="1.8" fill="#131312"/>
-  </g>
+    {# The sweep, borrowed from the case pages so the two surfaces feel like
+       one product. #}
+    <div class="shot__scan" aria-hidden="true"></div>
 
-  <!-- haze, over the road so the far end dissolves rather than ending -->
-  <rect x="0" y="148.0" width="440" height="54" fill="url(#rc-haze)"/>
+    <span class="shot__chip">synthetic · veo-3.1</span>
+    <div class="shot__grain" aria-hidden="true"></div>
+  </div>
 
-  <!-- the sweep -->
-  <g clip-path="url(#rc-road)">
-    <rect x="-10" y="152.0" width="460" height="64" fill="url(#rc-beam)"
-          style="animation: rc-scan 4.2s cubic-bezier(.4,0,.2,1) infinite"/>
-  </g>
-
-  <!-- the camera, on the shoulder -->
-  <g>
-    <ellipse cx="293.2" cy="214.3" rx="8.6" ry="2.5"
-             fill="#1A1A18" opacity="0.20"/>
-    <rect x="291.3" y="99.0"
-          width="3.7" height="115.3" fill="#5A5A53"/>
-    <!-- mast arm, with the diagonal stay these actually carry -->
-    <rect x="233.0" y="99.0"
-          width="60.1" height="3.0" fill="#5A5A53"/>
-    <path d="M 293.2 122.1 L 260.1 102.0"
-          stroke="#5A5A53" stroke-width="2.1" fill="none"/>
-    <!-- the head, hanging under the arm and looking back down the road -->
-    <rect x="228.2" y="102.0"
-          width="2.5" height="6.3" fill="#5A5A53"/>
-    <rect x="214.4" y="108.4"
-          width="30.0" height="15.0" rx="3.3" fill="#1A1A18"/>
-    <rect x="209.6" y="111.4"
-          width="5.4" height="9.0" rx="1.5" fill="#2C2C28"/>
-    <circle cx="212.3" cy="115.9"
-            r="3.0" fill="#D9A227"
-            style="animation: rc-lens 2.2s ease-in-out infinite"/>
-    <!-- it is transmitting -->
-    <g fill="none" stroke="#D9A227" stroke-width="2.0" stroke-linecap="round">
-      <path d="M 298.9 105.9 a 8.1 8.1 0 0 1 0 11.5"
-            style="animation: rc-flow 1.6s ease-in-out infinite"/>
-      <path d="M 303.5 103.1 a 13.3 13.3 0 0 1 0 17.3"
-            style="animation: rc-flow 1.6s ease-in-out .25s infinite"/>
-      <path d="M 308.2 100.2 a 18.4 18.4 0 0 1 0 23.1"
-            style="animation: rc-flow 1.6s ease-in-out .5s infinite"/>
-    </g>
-  </g>
-
-  <!-- the lock -->
-  <g style="animation: rc-lock 4.2s ease-out infinite">
-    <rect x="117.3" y="277.6" width="101.2" height="57.8"
-          fill="#B4451F" opacity="0.06"/>
-    <rect x="117.3" y="277.6" width="101.2" height="57.8"
-          fill="none" stroke="#B4451F" stroke-width="2.5"
-          style="animation: rc-lockpulse 1.4s ease-in-out infinite"/>
-    <!-- corner ticks: reads as a tracker rather than a rectangle -->
-    <g stroke="#B4451F" stroke-width="4" stroke-linecap="square" fill="none">
-      <path d="M 117.3 290.6 V 277.6 H 130.3"/>
-      <path d="M 205.5 277.6 H 218.5 V 290.6"/>
-      <path d="M 117.3 322.4 V 335.4 H 130.3"/>
-      <path d="M 205.5 335.4 H 218.5 V 322.4"/>
-    </g>
-    <rect x="117.3" y="252.6" width="102.5" height="19" rx="2.5" fill="#B4451F"/>
-    <text x="125.3" y="266.1" font-family="'JetBrains Mono', ui-monospace, monospace"
-          font-size="11" fill="#fff" letter-spacing="0.2">debris · 0.94</text>
-  </g>
-</svg>
+  <figcaption class="shot__cap">
+    <span><code>GA-4463</code> · debris, centre lane</span>
+    <span class="shot__filed">filed with Georgia DOT</span>
+  </figcaption>
+</figure>
