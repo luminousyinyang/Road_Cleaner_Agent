@@ -486,10 +486,6 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
             },
         )
 
-    @app.get("/about", response_class=HTMLResponse)
-    async def about(request: Request):
-        return TEMPLATES.TemplateResponse(request, "about.html", {"active": "about"})
-
     @app.get("/incidents", response_class=HTMLResponse)
     async def incidents_page(request: Request):
         """What you have reported. Filled in by the browser, not by this route.

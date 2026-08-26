@@ -165,7 +165,8 @@ src/road_cleaner/
   jurisdiction/  Rules engine mapping road + location → responsible agency.
   pipeline/      The asyncio supervisor that drives all four agents.
   web/           FastAPI dashboard (Jinja, no build step). `/` is the scenario
-                 library; also `/cases/{id}` and `/about`. /log and /simulation redirect.
+                 library; also `/cases/{id}`, `/dashcam` and `/incidents`.
+                 /log and /simulation redirect.
   cli.py         road-cleaner {doctor,seed,demo,run,audit,serve,cases,outbox,simulate}
 seeds/           Camera registry, agency registry, scenario timeline.
 tests/           unit/ (fast, pure) + integration/ (full pipeline, zero creds).

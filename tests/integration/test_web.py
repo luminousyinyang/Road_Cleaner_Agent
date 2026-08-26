@@ -161,12 +161,6 @@ class TestPages:
         assert "the official feed never saw" not in body
         assert "reports filed this week" not in body
 
-    def test_about_renders(self, client):
-        r = client.get("/about")
-        assert r.status_code == 200
-        assert "Detection is the easy part." in r.text
-        assert "Quiet by default" in r.text
-
     def test_case_page_renders_every_section(self, client, a_case):
         """What is left after the sidebar went.
 
@@ -231,7 +225,7 @@ class TestPages:
         assert "Nothing here." in r.text
 
     def test_branding_is_road_cleaner_not_roadwarden(self, client):
-        for path in ("/", "/about"):
+        for path in ("/", "/dashcam"):
             body = client.get(path).text
             assert "Road Cleaner" in body
             assert "RoadWarden" not in body
@@ -1233,25 +1227,6 @@ class TestThePageSaysWhatTheSystemNowIs:
         """It is what a link preview shows, so it outlives the page copy."""
         body = client.get("/").text
         assert "watches public traffic cameras across three states" not in body
-
-    def test_about_no_longer_promises_three_states_on_duty(self, client):
-        body = client.get("/about").text
-        assert "Three states on duty" not in body
-
-    def test_about_does_not_ask_the_model_for_a_lane(self, client):
-        """We stopped asking, because from a road you cannot count lanes."""
-        body = client.get("/about").text
-        assert "which lane" not in body
-
-    def test_about_does_not_promise_attachments_on_every_channel(self, client):
-        """Two of the three channels post form fields and no files at all."""
-        body = client.get("/about").text
-        assert "timestamped frames attached" not in body
-
-    def test_the_check_back_step_admits_a_dashcam_cannot_go_back(self, client):
-        # Collapsed, because the sentence wraps in the template.
-        body = " ".join(client.get("/about").text.split())
-        assert "A dashcam pass has nothing to return to" in body
 
 
 class TestTheDashcamReportsToTheRightAgency:
