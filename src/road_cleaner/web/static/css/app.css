@@ -1508,6 +1508,32 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
   font-size: 18px;
   letter-spacing: -0.01em;
 }
+/* The 24h tally. Rendered only when more than one person reported the same
+   thing, so it is an exception on the page rather than a row of identical
+   badges -- which is why it can afford to be loud. */
+.inc__tally {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 0 18px 12px;
+  padding: 3px 9px;
+  border: 1px solid var(--amber);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.inc__tally strong { font-size: 13px; color: var(--ink); }
+.inc__held {
+  margin: 12px 18px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  border-left: 2px solid var(--amber);
+  padding-left: 10px;
+}
 .inc__desc {
   margin: 0 18px 14px;
   font-size: 14px;

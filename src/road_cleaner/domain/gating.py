@@ -25,10 +25,17 @@ needs to be.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from road_cleaner.domain.enums import GateDecision, HazardType, Severity
 from road_cleaner.domain.geo import format_distance, haversine_meters
-from road_cleaner.domain.models import Camera, Detection, GateResult, OfficialEvent
+from road_cleaner.domain.models import (
+    Camera,
+    Detection,
+    GateResult,
+    IncidentSighting,
+    OfficialEvent,
+)
 
 # How confident we need to be before filing, by how bad it would be to be wrong.
 # Critical hazards clear a lower bar on purpose: the asymmetry is the point.
@@ -133,6 +140,82 @@ def find_duplicate_event(
         if best is None or distance < best[1]:
             best = (event, distance)
     return best
+
+
+# --------------------------------------------------- the dashcam 24h duplicate
+#
+# The camera pipeline's duplicate check (above) asks whether the *state* already
+# knows. This asks whether *we* already told them, on behalf of somebody else.
+#
+# Different question, because a dashcam has no fixed position and no correlation
+# key. A pothole on I-75 gets driven past by hundreds of people; without this,
+# every one of them who pressed the button would put another copy of the same
+# pothole in the same maintenance inbox, and the desk that received them would
+# stop reading any of them. That is the failure mode this whole system is built
+# to avoid, arriving through the one door that is open to the public.
+
+
+DEDUP_WINDOW_HOURS = 24
+
+# Hazard types that two drivers could reasonably use for the same object.
+#
+# A *relation*, not a partition -- deliberately not transitive. A carcass gets
+# called animal or debris; broken pavement gets called pothole or infrastructure
+# damage. Neither of those makes an animal the same thing as broken pavement, and
+# grouping by connected component would say it did.
+#
+# Everything not listed matches only itself, for the reason recorded on
+# HAZARD_FAMILIES above: over-broad matching once let a posted pothole suppress a
+# guardrail report. It is cheaper to be wrong here than there -- a false match
+# holds an email, it does not lose the incident -- but not free, so the pairs
+# below are ones where the two labels really do describe one thing in the road.
+DEDUP_EQUIVALENT: tuple[frozenset[HazardType], ...] = (
+    frozenset({HazardType.ANIMAL, HazardType.DEBRIS}),
+    frozenset({HazardType.POTHOLE, HazardType.INFRASTRUCTURE_DAMAGE}),
+)
+
+
+def same_hazard_family(left: HazardType, right: HazardType) -> bool:
+    """Would two drivers plausibly be labelling the same object?"""
+    if left is right:
+        return True
+    pair = frozenset({left, right})
+    return any(pair <= group for group in DEDUP_EQUIVALENT)
+
+
+def find_recent_similar(
+    hazard: HazardType,
+    lat: float,
+    lng: float,
+    now: datetime,
+    sightings: list[IncidentSighting],
+    config: GateConfig | None = None,
+    window_hours: int = DEDUP_WINDOW_HOURS,
+) -> list[IncidentSighting]:
+    """Reports of this same hazard, near here, inside the window.
+
+    Both halves have to hold. Type alone would make a pothole in Atlanta
+    suppress a pothole two hundred miles later the same afternoon, which is two
+    real hazards and one report. Distance alone would make a flooded underpass
+    silence the debris someone spots on the bridge above it.
+
+    Ordered nearest first, so a caller quoting one of these quotes the closest.
+    """
+    cfg = config or GateConfig()
+    cutoff = now - timedelta(hours=window_hours)
+
+    matched: list[tuple[float, IncidentSighting]] = []
+    for prior in sightings:
+        if prior.created_at < cutoff or prior.created_at > now:
+            continue
+        if not same_hazard_family(hazard, prior.hazard_type):
+            continue
+        distance = haversine_meters(lat, lng, prior.lat, prior.lng)
+        if distance <= cfg.duplicate_radius_meters:
+            matched.append((distance, prior))
+
+    matched.sort(key=lambda pair: pair[0])
+    return [sighting for _, sighting in matched]
 
 
 def evaluate(

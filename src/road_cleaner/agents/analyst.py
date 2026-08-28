@@ -16,15 +16,31 @@ Everything the gate decides gets written to the case trail, including the
 decisions to stay quiet. "We saw this and said nothing, because Florida already
 had it posted 210 metres up the road" is exactly the kind of reasoning that
 should be visible rather than invisible.
+
+`check_dashcam_duplicate` at the foot of this module is the same stage asked
+about a live dashcam find rather than a camera frame. It lives here, next to the
+gate it mirrors, rather than in the web layer -- deciding whether a hazard has
+already been reported is this stage's job whichever camera saw it, and a copy of
+that reasoning sitting in a route handler would be the copy that drifts.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
 
 from road_cleaner.domain import narrative
-from road_cleaner.domain.enums import CameraTier, CaseKind, EventTopic, GateDecision, Stage, Tone
-from road_cleaner.domain.gating import evaluate
+from road_cleaner.domain.enums import (
+    CameraTier,
+    CaseKind,
+    EventTopic,
+    GateDecision,
+    HazardType,
+    Stage,
+    Tone,
+)
+from road_cleaner.domain.gating import DEDUP_WINDOW_HOURS, evaluate, find_recent_similar
+from road_cleaner.domain.geo import format_distance, haversine_meters
 from road_cleaner.domain.lifecycle import (
     RECURRENCE_COOLDOWN_HOURS,
     correlation_key,
@@ -234,3 +250,93 @@ class Analyst:
                 case_id=case_id, at=self.c.clock.now(), stage=stage, text=text, tone=tone
             )
         )
+
+
+# ------------------------------------------------- the same stage, for dashcams
+
+
+@dataclass(frozen=True)
+class DashcamDuplicate:
+    """What the 24h check found out about a dashcam find.
+
+    `count` is how many *other* people already reported this same thing nearby,
+    so nought means nobody has and the report goes out.
+    """
+
+    count: int
+    reason: str | None = None
+
+    @property
+    def holds_mail(self) -> bool:
+        return self.reason is not None
+
+
+async def check_dashcam_duplicate(
+    container, hazard: HazardType, lat: float, lng: float
+) -> DashcamDuplicate:
+    """Has this hazard already been reported, by anyone, in the last 24 hours?
+
+    The dashcam equivalent of the gate's duplicate check, and the reason a
+    popular pothole produces one email rather than four hundred. Unlike the
+    camera pipeline's version this does not suppress the *record* -- the person
+    who reported it still gets their incident, with the count on it. It only
+    decides whether anything is mailed, because the second through four
+    hundredth copies of one report are what makes a maintenance desk stop
+    reading the first.
+
+    A store that cannot answer is treated as an answer of "nobody has", for the
+    reason given in `FirestoreIncidentStore.recent_sightings`: failing towards a
+    duplicate email is recoverable, failing towards silence is not.
+    """
+    store = getattr(container, "incidents", None)
+    if store is None or not hasattr(store, "recent_sightings"):
+        return DashcamDuplicate(count=0)
+
+    now = container.clock.now()
+    since = now - timedelta(hours=DEDUP_WINDOW_HOURS)
+    try:
+        sightings = await store.recent_sightings(since)
+    except Exception as exc:  # noqa: BLE001 - an unusable answer is no answer
+        log.warning("Dedup lookup failed; treating this as a first report",
+                    extra={"error": str(exc)})
+        return DashcamDuplicate(count=0)
+
+    similar = find_recent_similar(
+        hazard, lat, lng, now, sightings, container.gate_config
+    )
+    if not similar:
+        return DashcamDuplicate(count=0)
+
+    # `similar` is sorted nearest-first, so this is the closest of them.
+    nearest = similar[0]
+    hours_ago = max(0.0, (now - nearest.created_at).total_seconds() / 3600)
+    distance = haversine_meters(lat, lng, nearest.lat, nearest.lng)
+    others = "someone else" if len(similar) == 1 else f"{len(similar)} people"
+    reason = (
+        f"Already reported — {others} flagged {nearest.hazard_type.value} "
+        f"{_distance(distance)}, the most recent {_ago(hours_ago)}. "
+        "Kept for you, but not mailed again."
+    )
+    return DashcamDuplicate(count=len(similar), reason=reason)
+
+
+def _distance(meters: float) -> str:
+    """'in the same spot', or '210 metres away'.
+
+    `format_distance` rounds to the nearest ten metres, so two reports of one
+    pothole -- which is the ordinary case here -- come out as "0 metres away".
+    Under a phone's own margin of error there is no distance worth quoting, and
+    saying so plainly beats quoting a nought.
+    """
+    if meters < 25:
+        return "in the same spot"
+    return f"{format_distance(meters)} away"
+
+
+def _ago(hours: float) -> str:
+    """'40 minutes ago', '3 hours ago' -- whichever reads as a real interval."""
+    if hours < 1:
+        minutes = max(1, round(hours * 60))
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+    whole = round(hours)
+    return f"{whole} hour{'s' if whole != 1 else ''} ago"

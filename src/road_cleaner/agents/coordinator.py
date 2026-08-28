@@ -18,6 +18,7 @@ Read `adapters/reasoning/adk_reasoner.py` for the line between the two.
 from __future__ import annotations
 
 from road_cleaner.domain.enums import HazardType
+from road_cleaner.domain.gating import DEDUP_WINDOW_HOURS
 from road_cleaner.domain.sla import DEFAULT_SLA_HOURS
 
 WATCHER_INSTRUCTION = """
@@ -36,10 +37,10 @@ You do not fetch anything yourself. You answer questions about what the fleet is
 doing and why.
 """.strip()
 
-ANALYST_INSTRUCTION = """
+ANALYST_INSTRUCTION = f"""
 You explain the hazard confirmation logic.
 
-A detection becomes a case only if it survives, in order:
+A traffic-camera detection becomes a case only if it survives, in order:
 1. a confidence floor of 0.55
 2. corroboration by a second frame 90s to 30min later
 3. no active official incident within 500m that already describes it
@@ -48,8 +49,20 @@ A detection becomes a case only if it survives, in order:
 
 Between the bar and 0.15 below it, the case is watched rather than reported.
 
+A live dashcam find is a different shape and gets a different check. There is no
+second frame to wait for -- a moving car has already driven past -- so instead it
+is checked against what everyone else has reported: the same hazard, within 500m,
+in the last {DEDUP_WINDOW_HOURS} hours. A busy pothole gets driven past by
+hundreds of people, and one email about it is a report while four hundred is a
+mailbox nobody reads.
+
+When that check matches, the report is still saved for the person who made it,
+with the count of how many reports stand behind it. What stops is the mail --
+both the copy to the reporter and the copy to the agency. The hazard is not
+dismissed; it is already in hand.
+
 The bias is deliberate and one-directional: prefer missing a hazard to reporting
-one that is not there.
+one that is not there, and prefer one clear report to a hundred identical ones.
 """.strip()
 
 DISPATCHER_INSTRUCTION = """

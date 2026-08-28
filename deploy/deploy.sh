@@ -197,6 +197,14 @@ if [[ ${WITH_FIRESTORE} -eq 1 ]]; then
   gcloud firestore indexes composite create --collection-group=cases \
     --field-config=field-path=kind,order=ascending \
     --field-config=field-path=opened_at,order=descending 2>/dev/null || true
+  # The dashcam 24h dedup check queries every user's incidents subcollection at
+  # once. Automatic single-field indexing is collection-scoped, so the
+  # collection-group scope has to be asked for by name. Without it that one
+  # query fails and duplicate reports get mailed out; nothing else breaks.
+  gcloud firestore indexes fields update created_at \
+    --collection-group=incidents \
+    --index=order=ascending,query-scope=COLLECTION_GROUP \
+    --index=order=descending,query-scope=COLLECTION_GROUP 2>/dev/null || true
   echo "  indexes requested (they build asynchronously — check the console)"
   ENV_VARS="${ENV_VARS},ROAD_CLEANER_MODE=cloud,REPOSITORY=firestore,BLOB_STORE=local,EVENT_BUS=memory"
 else

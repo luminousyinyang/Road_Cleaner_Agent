@@ -115,6 +115,24 @@
     heading.textContent = `${incident.hazard} · ${incident.confidence.toFixed(2)}`;
     article.appendChild(heading);
 
+    // Only when somebody else reported it too. A badge reading "1 report" on
+    // every card is decoration; the number is worth showing precisely when it
+    // is greater than one, because that is when it changed what we did.
+    if (incident.reports_24h > 1) {
+      const badge = document.createElement("p");
+      badge.className = "inc__tally";
+      const count = document.createElement("strong");
+      count.textContent = String(incident.reports_24h);
+      badge.append(
+        count,
+        ` reports of this in ${incident.dedup_window_hours}h`
+      );
+      if (incident.dedup_reason) {
+        badge.append(" · mail held");
+      }
+      article.appendChild(badge);
+    }
+
     if (incident.description) {
       article.appendChild(line("inc__desc", incident.description));
     }
@@ -124,16 +142,18 @@
     fact(facts, "Where", incident.location || "—");
     fact(facts, "When", incident.when);
     fact(facts, "Agency", incident.agency || "none resolved");
-    fact(
-      facts,
-      "Emailed to",
-      incident.emailed_to || "not sent — the mail server refused"
-    );
-    // Three states, because "we did not try" and "we tried and were refused"
-    // are different facts, and the second usually means DASHCAM_NOTIFY_DOT is on
-    // while the address is not allowlisted. That is a settings answer, so say it.
+    fact(facts, "Emailed to", mailLine(incident));
+    // Four states, because "we did not try", "we tried and were refused" and
+    // "somebody else already reported it" are different facts. The middle one
+    // usually means DASHCAM_NOTIFY_DOT is on while the address is not
+    // allowlisted, which is a settings answer, so say it.
     fact(facts, "DOT", dotLine(incident));
     article.appendChild(facts);
+    // Below the facts, because it is the explanation for the two "not sent"
+    // lines directly above it rather than a fact of its own.
+    if (incident.dedup_reason) {
+      article.appendChild(line("inc__held", incident.dedup_reason));
+    }
 
     const details = document.createElement("details");
     details.className = "inc__report";
@@ -149,9 +169,18 @@
     return article;
   }
 
+  function mailLine(incident) {
+    if (incident.emailed_to) return incident.emailed_to;
+    // A held duplicate never reached the mail server, so blaming the mail
+    // server for it would be a plain untruth on the card.
+    if (incident.dedup_reason) return "not sent — already reported";
+    return "not sent — the mail server refused";
+  }
+
   function dotLine(incident) {
     if (incident.dot_state === "sent") return `sent to ${incident.dot_destination}`;
     if (incident.dot_state === "refused") return `not sent — ${incident.dot_error}`;
+    if (incident.dot_state === "duplicate") return "not sent — already reported";
     return "not sent — reporting to agencies is off";
   }
 

@@ -449,9 +449,21 @@
 
       const saved = await response.json();
       errorSlot.hidden = true;
-      const note = saved.emailed_to
-        ? `Saved, and sent to ${saved.emailed_to}.`
-        : "Saved. The mail could not be sent — it is on your incidents page.";
+      // Three outcomes, and the middle one is the one worth being clear about:
+      // nothing was mailed, but that is because the road already got reported,
+      // not because anything went wrong. Somebody who stopped to report a
+      // hazard deserves to be told it is already in hand.
+      let note;
+      if (saved.dedup_reason) {
+        note =
+          `Saved — that makes ${saved.reports_24h} reports of this in ` +
+          `${saved.dedup_window_hours}h, so it is already in hand and ` +
+          "nothing was sent again.";
+      } else if (saved.emailed_to) {
+        note = `Saved, and sent to ${saved.emailed_to}.`;
+      } else {
+        note = "Saved. The mail could not be sent — it is on your incidents page.";
+      }
 
       found = null;
       reportButton.hidden = true;

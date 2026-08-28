@@ -244,6 +244,112 @@ class TestWhatItRefuses:
         assert client.get("/api/incidents").json()["incidents"] == []
 
 
+class TestTheTwentyFourHourDuplicate:
+    """One pothole, many drivers, one email.
+
+    The check crosses users on purpose -- the second person to drive past a
+    hazard is usually not the first -- so these tests report as two different
+    people and assert that the second one is recognised as a duplicate.
+
+    Nothing here can assert that mail was *not* sent, because SMTP is unset in
+    this module and nothing sends either way. What it asserts instead is the
+    decision: `dedup_reason` is set exactly when the mail was held, and
+    `dot_state` says "duplicate" rather than blaming a setting.
+    """
+
+    ELSEWHERE = {"lat": 33.7760, "lng": -84.3880}  # ~3km north, outside 500m
+
+    def as_somebody_else(self, app):
+        other = AuthUser("uid-zzz999", "other@example.com", True, None, None)
+        app.dependency_overrides[require_user] = lambda: other
+        app.dependency_overrides[require_mailable_user] = lambda: other
+
+    def test_the_first_report_goes_out(self, client):
+        first = save(client).json()
+        assert first["dedup_reason"] is None
+        assert first["reports_24h"] == 1
+
+    def test_the_second_is_held(self, client):
+        save(client)
+        second = save(client).json()
+
+        assert second["dedup_reason"]
+        assert second["reports_24h"] == 2
+        # Not "held", which would blame DASHCAM_NOTIFY_DOT for a decision the
+        # duplicate check made.
+        assert second["dot_state"] == "duplicate"
+
+    def test_it_is_still_saved_in_full(self, client):
+        """The whole point: the reporter keeps their record either way."""
+        save(client)
+        second = save(client).json()
+
+        stored = client.get("/api/incidents").json()["incidents"]
+        assert second["id"] in [i["id"] for i in stored]
+        assert second["body"]
+        assert client.get(second["image_url"]).status_code == 200
+
+    def test_somebody_elses_report_counts(self, settings):
+        """A duplicate is a duplicate whoever filed the first one."""
+        app = create_app(settings)
+        app.dependency_overrides[require_user] = lambda: SOMEBODY
+        app.dependency_overrides[require_mailable_user] = lambda: SOMEBODY
+        with TestClient(app) as client:
+            save(client)
+
+        self.as_somebody_else(app)
+        with TestClient(app) as client:
+            second = save(client).json()
+
+        assert second["reports_24h"] == 2
+        assert second["dedup_reason"]
+
+    def test_but_only_their_own_shows_on_their_page(self, settings):
+        """Counting across users must not leak across them."""
+        app = create_app(settings)
+        app.dependency_overrides[require_user] = lambda: SOMEBODY
+        app.dependency_overrides[require_mailable_user] = lambda: SOMEBODY
+        with TestClient(app) as client:
+            save(client)
+
+        self.as_somebody_else(app)
+        with TestClient(app) as client:
+            save(client)
+            listed = client.get("/api/incidents").json()["incidents"]
+
+        assert len(listed) == 1
+
+    def test_a_different_hazard_is_not_a_duplicate(self, client):
+        save(client, hazard="debris")
+        other = save(client, hazard="flooding").json()
+        assert other["dedup_reason"] is None
+        assert other["reports_24h"] == 1
+
+    def test_the_same_hazard_elsewhere_is_not_a_duplicate(self, client):
+        save(client)
+        other = save(client, **self.ELSEWHERE).json()
+        assert other["dedup_reason"] is None
+
+    def test_the_reason_says_what_and_when(self, client):
+        """It is the text on the card, so it has to read as an explanation."""
+        save(client)
+        reason = save(client).json()["dedup_reason"]
+        assert "debris" in reason
+        assert "ago" in reason
+
+    def test_the_same_spot_does_not_report_a_distance_of_nought(self, client):
+        """`format_distance` rounds to ten metres, so it would say "0 metres"."""
+        save(client)
+        assert "in the same spot" in save(client).json()["dedup_reason"]
+
+    def test_a_real_distance_is_quoted(self, client):
+        """Inside the radius, but far enough that the number means something."""
+        save(client)
+        # ~330m north: still a duplicate, but not the same spot.
+        reason = save(client, lat=33.7520, lng=-84.3880).json()["dedup_reason"]
+        assert "metres away" in reason
+
+
 class TestOwnership:
     def test_one_persons_incident_is_not_anothers(self, settings):
         """The uid comes off the token, so the store is asked with theirs."""

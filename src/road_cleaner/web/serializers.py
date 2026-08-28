@@ -21,6 +21,7 @@ from road_cleaner.domain.enums import (
     CaseKind,
     Tone,
 )
+from road_cleaner.domain.gating import DEDUP_WINDOW_HOURS
 from road_cleaner.domain.models import Case, CaseWithDetail, Detection, FrameRef, Incident
 from road_cleaner.domain.sla import elapsed_fraction, format_remaining, rationale_for
 from road_cleaner.ports.media import SYNTHETIC_PREFIX
@@ -759,10 +760,30 @@ def incident_row(incident: Incident) -> dict[str, Any]:
         # refused" are different facts, and the second one is the interesting
         # one -- it usually means DASHCAM_NOTIFY_DOT is on and the address is
         # not allowlisted, which is a configuration answer, not a bug.
+        #
+        # "duplicate" is a fourth, and it outranks the rest: when the 24h check
+        # holds the mail nothing is attempted at all, so `dot_notified` and
+        # `dot_error` are both empty and would otherwise read as "held", which
+        # blames the DASHCAM_NOTIFY_DOT setting for a decision it did not make.
         "dot_state": (
-            "sent" if incident.dot_notified else ("refused" if incident.dot_error else "held")
+            "duplicate"
+            if incident.dedup_reason
+            else "sent"
+            if incident.dot_notified
+            else "refused"
+            if incident.dot_error
+            else "held"
         ),
         "dot_destination": incident.dot_destination,
         "dot_error": incident.dot_error,
+        # How many reports of this hazard stood near here inside the window,
+        # *including* this one -- "3 reports in 24h" is the sentence a reader
+        # expects, and it should count the card they are looking at. The stored
+        # field counts the others, so this is one more than that.
+        "reports_24h": incident.similar_recent_count + 1,
+        "dedup_window_hours": DEDUP_WINDOW_HOURS,
+        # Present only when the count actually held the mail back. The card uses
+        # it as the explanation for every "not sent" line at once.
+        "dedup_reason": incident.dedup_reason,
         "model": incident.model_name,
     }

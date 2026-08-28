@@ -18,9 +18,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 
-from road_cleaner.domain.models import Incident
+from road_cleaner.domain.models import Incident, IncidentSighting
 from road_cleaner.logging import get_logger
 
 log = get_logger(__name__)
@@ -102,6 +103,44 @@ class LocalIncidentStore:
             if directory is None or safe_id is None:
                 return None
             return self._load(directory / f"{safe_id}.json")
+
+        return await asyncio.to_thread(read)
+
+    async def recent_sightings(
+        self, since: datetime, limit: int = 500
+    ) -> list[IncidentSighting]:
+        """Every user's directory, newest first, projected down.
+
+        A full walk of the tree. That is acceptable here and nowhere else: this
+        store exists so `make serve` works on a laptop, where the tree is one
+        developer's own test reports. The deployed answer is the Firestore
+        store, which pushes the same filter into a query.
+        """
+
+        def read() -> list[IncidentSighting]:
+            found: list[tuple[datetime, IncidentSighting]] = []
+            for directory in self.root.glob("*"):
+                if not directory.is_dir():
+                    continue
+                for path in directory.glob("*.json"):
+                    incident = self._load(path)
+                    if incident is None or incident.created_at < since:
+                        continue
+                    found.append(
+                        (
+                            incident.created_at,
+                            IncidentSighting(
+                                hazard_type=incident.hazard_type,
+                                lat=incident.lat,
+                                lng=incident.lng,
+                                created_at=incident.created_at,
+                            ),
+                        )
+                    )
+            # Newest first, so a `limit` that bites drops the oldest -- the ones
+            # about to leave the window anyway.
+            found.sort(key=lambda pair: pair[0], reverse=True)
+            return [sighting for _, sighting in found[:limit]]
 
         return await asyncio.to_thread(read)
 

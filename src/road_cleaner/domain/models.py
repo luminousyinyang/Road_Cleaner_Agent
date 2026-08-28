@@ -351,6 +351,28 @@ class GateResult(Base):
 # ------------------------------------------------------------------- incidents
 
 
+class IncidentSighting(Base):
+    """The four facts about a saved incident that the 24h dedup check needs.
+
+    Deliberately not an `Incident`. The dedup check is the one read in this
+    system that crosses users -- two strangers driving the same road an hour
+    apart is exactly the case it exists to catch -- and a cross-user read that
+    returned whole incidents would be a route to somebody else's photograph,
+    their description, their agency correspondence and the address it was
+    mailed to.
+
+    So the store projects down to this on the way out. What a caller cannot
+    load, a caller cannot leak, and there is nothing here that identifies a
+    person: no uid, no incident id, no prose. Just what kind of hazard, where,
+    and when -- which is the whole of what `find_recent_similar` reasons over.
+    """
+
+    hazard_type: HazardType
+    lat: float
+    lng: float
+    created_at: datetime
+
+
 class Incident(Base):
     """Something a signed-in person saw through their own dashcam, and kept.
 
@@ -412,6 +434,16 @@ class Incident(Base):
     dot_notified: bool = False
     dot_destination: str | None = None
     dot_error: str | None = None
+
+    # --- what the 24h dedup check found, recorded as of the moment this was
+    # saved rather than recomputed on read. The count is why no mail went out,
+    # so it has to be the number the decision was actually made on; a figure
+    # that drifted as the window rolled would stop explaining the record it is
+    # attached to. Counts *other* reports, so 0 means this was the first.
+    similar_recent_count: int = 0
+    # Set only when that count held the mail back. Doubles as the flag -- a
+    # separate boolean could disagree with the sentence next to it.
+    dedup_reason: str | None = None
 
     # Blob store keys, not URLs. The store may be local disk or GCS, and a URL
     # baked in at write time would be wrong the moment the deployment moves.

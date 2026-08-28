@@ -1118,10 +1118,18 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         nothing to clean up. The image is stored next, so the mail can enclose
         it. The record is written last and reflects what actually happened,
         including a DOT send that was attempted and refused.
+
+        Between the two sits the 24h duplicate check. If somebody already
+        reported this hazard near here today, the incident is still saved in
+        full -- the person who stopped to report it gets their record either way
+        -- but no mail goes out for it, in any direction. See
+        `agents.analyst.check_dashcam_duplicate`.
         """
         from road_cleaner.adapters.filing.base import ComposedReport, allow_destination
         from road_cleaner.adapters.filing.email_channel import EmailChannel
+        from road_cleaner.agents.analyst import check_dashcam_duplicate
         from road_cleaner.domain.enums import AgencyLevel, Channel
+        from road_cleaner.domain.gating import DEDUP_WINDOW_HOURS
         from road_cleaner.domain.models import Agency, BoundingBox, Incident
         from road_cleaner.ports.filing_channel import FilingError
 
@@ -1154,6 +1162,10 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         detection = composed.detection
         place = composed.place
 
+        duplicate = await check_dashcam_duplicate(
+            c, detection.hazard_type, place.lat, place.lng
+        )
+
         incident = Incident(
             uid=user.uid,
             hazard_type=detection.hazard_type,
@@ -1176,6 +1188,8 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
             rule_id=composed.rule_id,
             report_subject=composed.subject,
             report_body=composed.body,
+            similar_recent_count=duplicate.count,
+            dedup_reason=duplicate.reason,
         )
 
         # Under the uid, so the ownership check on the way back out is a path
@@ -1184,66 +1198,81 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         await c.blobs.put(key, jpeg, content_type="image/jpeg")
         incident.image_keys = [key]
 
-        channel = EmailChannel(
-            host=c.settings.smtp_host,
-            port=c.settings.smtp_port,
-            user=c.settings.smtp_user,
-            password=c.settings.smtp_password,
-            from_address=c.settings.filing_from_address,
-        )
-
-        # --- the copy that goes to whoever found it
-        address = user.mailable
-        yours = Agency(
-            id="road-cleaner-you",
-            name="you",
-            level=AgencyLevel.STATE_DOT,
-            state=place.state,
-            channel=Channel.EMAIL,
-            email=address,
-        )
-        report = ComposedReport(
-            destination=address,
-            subject=composed.subject,
-            body=_your_copy(composed, agency),
-            inline_attachments=[("road-hazard.jpg", jpeg)],
-        )
-        try:
-            with allow_destination(address):
-                await channel.transmit(report, yours)
-        except FilingError as exc:
-            # The image is already stored and the report already composed, so
-            # this is reported rather than raised: losing the record because the
-            # mail server was down would be the worse of the two failures.
-            log.warning("Could not mail incident %s to %s: %s", incident.id, address, exc)
+        # Both sends live under one condition rather than two, so that a
+        # duplicate cannot mail one copy and hold the other. Everything below
+        # this point is skipped for a duplicate; the incident is written either
+        # way, a few lines further down.
+        if duplicate.holds_mail:
+            log.info(
+                "Held mail for incident %s: %d similar report(s) in %dh",
+                incident.id,
+                duplicate.count,
+                DEDUP_WINDOW_HOURS,
+            )
         else:
-            incident.emailed_to = address
-            incident.emailed_at = c.clock.now()
+            channel = EmailChannel(
+                host=c.settings.smtp_host,
+                port=c.settings.smtp_port,
+                user=c.settings.smtp_user,
+                password=c.settings.smtp_password,
+                from_address=c.settings.filing_from_address,
+            )
 
-        # --- the copy that goes to the agency, if this deployment does that
-        #
-        # DASHCAM_NOTIFY_DOT opens this code path and nothing else. The address
-        # below is an agency's, so it still has to clear guard_live_send the
-        # ordinary way -- through LIVE_FILING_ALLOWLIST or ALLOW_LIVE_FILING --
-        # and is deliberately *not* wrapped in allow_destination. Turning the
-        # flag on by itself can never put mail in a real maintenance desk.
-        if c.settings.dashcam_notify_dot and agency.email:
+            # --- the copy that goes to whoever found it
+            address = user.mailable
+            yours = Agency(
+                id="road-cleaner-you",
+                name="you",
+                level=AgencyLevel.STATE_DOT,
+                state=place.state,
+                channel=Channel.EMAIL,
+                email=address,
+            )
+            report = ComposedReport(
+                destination=address,
+                subject=composed.subject,
+                body=_your_copy(composed, agency),
+                inline_attachments=[("road-hazard.jpg", jpeg)],
+            )
             try:
-                await channel.transmit(
-                    ComposedReport(
-                        destination=agency.email,
-                        subject=composed.subject,
-                        body=composed.body,
-                        inline_attachments=[("road-hazard.jpg", jpeg)],
-                    ),
-                    agency,
-                )
+                with allow_destination(address):
+                    await channel.transmit(report, yours)
             except FilingError as exc:
-                incident.dot_error = str(exc)
-                log.info("DOT send for incident %s refused: %s", incident.id, exc)
+                # The image is already stored and the report already composed, so
+                # this is reported rather than raised: losing the record because
+                # the mail server was down would be the worse of the two failures.
+                log.warning(
+                    "Could not mail incident %s to %s: %s", incident.id, address, exc
+                )
             else:
-                incident.dot_notified = True
-                incident.dot_destination = agency.email
+                incident.emailed_to = address
+                incident.emailed_at = c.clock.now()
+
+            # --- the copy that goes to the agency, if this deployment does that
+            #
+            # DASHCAM_NOTIFY_DOT opens this code path and nothing else. The
+            # address below is an agency's, so it still has to clear
+            # guard_live_send the ordinary way -- through LIVE_FILING_ALLOWLIST
+            # or ALLOW_LIVE_FILING -- and is deliberately *not* wrapped in
+            # allow_destination. Turning the flag on by itself can never put mail
+            # in a real maintenance desk.
+            if c.settings.dashcam_notify_dot and agency.email:
+                try:
+                    await channel.transmit(
+                        ComposedReport(
+                            destination=agency.email,
+                            subject=composed.subject,
+                            body=composed.body,
+                            inline_attachments=[("road-hazard.jpg", jpeg)],
+                        ),
+                        agency,
+                    )
+                except FilingError as exc:
+                    incident.dot_error = str(exc)
+                    log.info("DOT send for incident %s refused: %s", incident.id, exc)
+                else:
+                    incident.dot_notified = True
+                    incident.dot_destination = agency.email
 
         await c.incidents.save(incident)
         return S.incident_row(incident)

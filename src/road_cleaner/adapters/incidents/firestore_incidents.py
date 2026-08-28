@@ -11,15 +11,22 @@ It also means the newest-first listing needs no composite index. A top-level
 would fail its first query with FAILED_PRECONDITION on any deployment where
 `deploy.sh --with-firestore` had not built it.
 
+The 24h dedup check reads the other way, across every user, and pays for the
+layout there: a collection group query needs `created_at` indexed at
+COLLECTION_GROUP scope, which automatic single-field indexing does not give.
+`deploy.sh --with-firestore` requests it. Without it that one query fails, and
+`recent_sightings` is written to survive that -- see the comment on its except.
+
 The Firestore client is synchronous, so every call runs on a worker thread.
 """
 
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 from typing import Any
 
-from road_cleaner.domain.models import Incident
+from road_cleaner.domain.models import Incident, IncidentSighting
 from road_cleaner.logging import get_logger
 
 log = get_logger(__name__)
@@ -91,3 +98,48 @@ class FirestoreIncidentStore:
             lambda: self._collection(uid).document(incident_id).get()
         )
         return Incident(**snap.to_dict()) if snap.exists else None
+
+    async def recent_sightings(
+        self, since: datetime, limit: int = 500
+    ) -> list[IncidentSighting]:
+        """A collection group query across every user's incidents subcollection.
+
+        The one query in this class that is not rooted at a single user, which is
+        the whole reason it returns `IncidentSighting` and not `Incident` -- see
+        the port. `select()` makes that structural rather than a promise: the
+        four projected fields are all Firestore is asked to send, so nobody
+        else's photograph or correspondence crosses the wire at all.
+
+        `created_at` is compared as a string because that is how `_doc` writes
+        it. `model_dump(mode="json")` renders every timestamp as an ISO-8601
+        instant at a fixed UTC offset, and those sort lexicographically in the
+        same order they sort chronologically, so `>=` means what it says.
+        """
+
+        def query() -> list[IncidentSighting]:
+            from google.cloud.firestore import Query
+
+            snaps = (
+                self._client()
+                .collection_group(INCIDENTS)
+                .where("created_at", ">=", since.isoformat())
+                .order_by("created_at", direction=Query.DESCENDING)
+                .limit(limit)
+                .select(["hazard_type", "lat", "lng", "created_at"])
+                .stream()
+            )
+            return [IncidentSighting(**s.to_dict()) for s in snaps]
+
+        try:
+            return await asyncio.to_thread(query)
+        except Exception as exc:  # noqa: BLE001 - see below
+            # Degrades towards *sending*. A collection group index that has not
+            # finished building is the likely cause, and the alternative -- to
+            # treat an unanswered question as "this is a duplicate" -- would
+            # silently hold a report nobody had made before. Better a second
+            # copy of one pothole than a hazard nobody is told about.
+            log.warning(
+                "Dedup lookup failed; treating this as a first report",
+                extra={"error": str(exc)},
+            )
+            return []
