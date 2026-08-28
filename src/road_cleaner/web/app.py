@@ -1290,11 +1290,18 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
             # or ALLOW_LIVE_FILING -- and is deliberately *not* wrapped in
             # allow_destination. Turning the flag on by itself can never put mail
             # in a real maintenance desk.
-            if c.settings.dashcam_notify_dot and agency.email:
+            #
+            # The override is for the agencies that publish no address at all --
+            # WSDOT and Redmond among them -- where there would otherwise be
+            # nothing to send to. It changes only where this one copy goes;
+            # `agency` still names whoever owns the road, and that is what the
+            # report says and what the incident records. See `config.py`.
+            dot_address = c.settings.dashcam_dot_email_override or agency.email
+            if c.settings.dashcam_notify_dot and dot_address:
                 try:
                     await channel.transmit(
                         ComposedReport(
-                            destination=agency.email,
+                            destination=dot_address,
                             subject=composed.subject,
                             body=composed.body,
                             inline_attachments=[("road-hazard.jpg", jpeg)],
@@ -1306,7 +1313,10 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                     log.info("DOT send for incident %s refused: %s", incident.id, exc)
                 else:
                     incident.dot_notified = True
-                    incident.dot_destination = agency.email
+                    # Where it actually went, which under an override is not the
+                    # agency's own address. The record has to say where the mail
+                    # was sent, not where it would have been sent.
+                    incident.dot_destination = dot_address
 
         await c.incidents.save(incident)
         return S.incident_row(incident)

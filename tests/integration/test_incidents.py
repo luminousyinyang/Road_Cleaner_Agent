@@ -350,6 +350,74 @@ class TestTheTwentyFourHourDuplicate:
         assert "metres away" in reason
 
 
+class TestWashingtonRouting:
+    """Redmond and Bellevue, where this is actually going to be driven.
+
+    Every coordinate in Washington used to fall through to `state-dot-fallback`
+    and name WSDOT, including for city streets WSDOT does not maintain. These
+    pin the two things that fixes: the right agency, and -- for Bellevue, the one
+    body in the area that publishes an address for this -- a real one to send to.
+    """
+
+    # Downtown Bellevue. Worth stating why this is not tested through the place
+    # name: `Place.nearest` here is "Clyde Hill", a separate city with its own
+    # public works department, because the nearest Census centroid is not the
+    # containing city. Routing on that name sent Bellevue's streets to the wrong
+    # government, which is why the rule matches on distance instead.
+    BELLEVUE = {"lat": 47.6101, "lng": -122.2015}
+    REDMOND = {"lat": 47.6740, "lng": -122.1215}
+    SEATTLE = {"lat": 47.6062, "lng": -122.3321}
+
+    def test_bellevue_goes_to_bellevue(self, client):
+        incident = save(client, **self.BELLEVUE).json()
+        assert "Bellevue" in incident["agency"]
+
+    def test_and_it_has_a_real_address_to_send_to(self, client):
+        """The published 24-hour Operations and Maintenance desk.
+
+        The ampersand is genuinely part of the address as Bellevue prints it. It
+        is legal in a local part and it survives the wire, but it is unusual
+        enough that a well-meaning cleanup would silently break the one working
+        agency address in the state.
+        """
+        incident = save(client, **self.BELLEVUE).json()
+        assert incident["agency_email"] == "O&MSupport@bellevuewa.gov"
+
+    def test_redmond_goes_to_redmond(self, client):
+        incident = save(client, **self.REDMOND).json()
+        assert "Redmond" in incident["agency"]
+
+    def test_redmond_publishes_no_address_so_none_is_invented(self, client):
+        """Redmond takes these through a 311 form, not email.
+
+        The seed file's rule, restated as a test: an address nobody published is
+        an address nobody reads, so the field stays empty rather than borrowing
+        a neighbouring city's.
+        """
+        incident = save(client, **self.REDMOND).json()
+        assert incident["agency_email"] is None
+        assert incident["agency_endpoint"]
+
+    def test_elsewhere_in_the_state_is_not_handed_to_a_city(self, client):
+        """The bug that turned up the moment a city had a real inbox.
+
+        Seattle is twenty miles from Bellevue and WSDOT is the fallback for it.
+        But every agency in the state used to be offered to the model as a
+        candidate, and asked about a hazard in Seattle it picked Bellevue's
+        maintenance desk -- which was harmless while that desk was a form
+        pointing at an unreachable endpoint, and stopped being harmless when it
+        became an address somebody reads.
+
+        Not a test of the fallback. A test that a city's real inbox cannot be
+        reached from outside the area that city actually maintains.
+        """
+        for spot in (self.SEATTLE, {"lat": 47.6588, "lng": -117.4260}):  # + Spokane
+            incident = save(client, **spot).json()
+            assert "Bellevue" not in incident["agency"], incident["agency"]
+            assert "Redmond" not in incident["agency"], incident["agency"]
+            assert incident["agency_email"] is None, "reached a city inbox from outside it"
+
+
 class TestOwnership:
     def test_one_persons_incident_is_not_anothers(self, settings):
         """The uid comes off the token, so the store is asked with theirs."""

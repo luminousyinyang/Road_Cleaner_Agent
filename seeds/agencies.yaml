@@ -235,6 +235,49 @@ agencies:
     ref_format: FTL-2026-#####
     jurisdiction_note: Signals and city streets within Fort Lauderdale.
 
+  # --- King County, WA. Added for live dashcam use on the Eastside.
+  #
+  # Both cities maintain their own surface streets; WSDOT keeps only the state
+  # routes through them (I-405, SR 520, SR 202). Without these two, every
+  # coordinate in Washington fell through to `state-dot-fallback` and named
+  # WSDOT for roads WSDOT does not touch.
+  - id: bellevue-public-works
+    name: City of Bellevue — Operations and Maintenance
+    level: city
+    state: WA
+    # The one agency in this area that publishes a real address for exactly this.
+    # It is the 24-hour Operations and Maintenance response line, listed on both
+    # the Street Maintenance and the Safety and Maintenance pages, with a stated
+    # response target of 24 hours for potholes. Verified against both pages on
+    # 2026-08-28. The ampersand is genuinely part of the published local part --
+    # unusual, valid under RFC 5322, and copied here exactly as they print it.
+    channel: email
+    email: O&MSupport@bellevuewa.gov
+    endpoint: https://bellevuewa.gov/city-government/departments/transportation/safety-and-maintenance
+    ref_label: BELLEVUE O&M
+    ref_format: BEL-2026-#####
+    jurisdiction_note: City streets and signals within Bellevue.
+    # Kept short of the real city limits on purpose. Falling through to WSDOT at
+    # the edges is the safe way to be wrong; claiming a neighbour's street and
+    # mailing this desk about it is not. This bounds the model's candidate list
+    # as well as the rule -- see `candidates_for`.
+    service_area: {lat: 47.5950, lng: -122.1550, radius_km: 8}
+
+  - id: redmond-public-works
+    name: City of Redmond — Public Works
+    level: city
+    state: WA
+    # Redmond publishes no email for this. Reports go through its QScend 311
+    # system, or 425-556-2900 ext. 7. Left as a form for the reason given at the
+    # head of the state block: an address nobody published is an address nobody
+    # reads. Verified 2026-08-28.
+    channel: maintenance_form
+    endpoint: https://redmondwa.qscend.com/311/
+    ref_label: REDMOND 311
+    ref_format: RED-2026-#####
+    jurisdiction_note: City streets and signals within Redmond.
+    service_area: {lat: 47.6800, lng: -122.1050, radius_km: 6}
+
 
   # ------------------------------------- state-level entries for the three
   # These sit alongside the district agencies above, not instead of them. The
@@ -708,10 +751,16 @@ agencies:
     level: state_dot
     state: WA
     channel: maintenance_form
-    endpoint: https://wsdot.wa.gov/
+    # WSDOT publishes no email for maintenance reports. Its own intake is the
+    # feedback form below, or a regional phone number (425-739-3730 for the
+    # Seattle metro maintenance crews). The only published Northwest Region
+    # address, nwpublicaffairs@wsdot.wa.gov, is a communications desk rather
+    # than a maintenance one, so it is deliberately not set here -- see the note
+    # at the head of this block. Verified 2026-08-28.
+    endpoint: https://wsdot.wa.gov/about/contacts/send-us-your-feedback
     ref_label: WSDOT
     ref_format: RC-WA-#####
-    jurisdiction_note: State-maintained roads in Washington.
+    jurisdiction_note: State-maintained roads in Washington — I-405, SR 520, SR 202.
 
   - id: wv-dot
     name: West Virginia DOT
@@ -783,6 +832,26 @@ rules:
     match:
       road_prefix: ["I-", "US-", "SR-", "GA-", "FL-", "NC-"]
     use_camera_owner: true
+
+  - id: city-service-area
+    description: >-
+      A city maintains its own surface streets. A coordinate inside one belongs
+      to that city, not to the state DOT, which keeps only the state routes
+      running through it.
+    match:
+      # A bare coordinate, same condition the state fallback uses. A camera on a
+      # named road is left to the rules above -- this is about dropped pins and
+      # dashcams, which is where the city/state distinction actually gets lost.
+      road_unknown: true
+    # Geography, not place names. `Place.nearest` for downtown Bellevue is
+    # "Clyde Hill" -- a genuinely separate city with its own public works -- so
+    # matching on that name sent Bellevue's streets to the wrong government.
+    #
+    # The circles live on the agencies themselves rather than here, so that this
+    # rule and the model's candidate list cannot come to different conclusions
+    # about where a city ends. Adding a city needs only a `service_area` on its
+    # entry; this rule needs no edit. See `_agency_by_service_area`.
+    agency_by_service_area: true
 
   - id: state-dot-fallback
     # Skipped by the first pass and consulted only after the model has declined.

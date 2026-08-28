@@ -154,6 +154,35 @@ class OfficialEvent(Base):
 # --------------------------------------------------------------------- agency
 
 
+class ServiceArea(Base):
+    """Roughly where an agency's responsibility ends.
+
+    A circle, which no city is. It exists because the alternative was worse:
+    without one, every agency in a state is a candidate for every coordinate in
+    it, and the model picking between them once put a hazard in Seattle on the
+    desk of Bellevue's maintenance crew twenty miles away.
+
+    Deliberately approximate and deliberately small. Set inside the real limits,
+    so the failure is a report falling through to the state DOT rather than one
+    city being sent another city's roads. Only cities carry one; a state DOT's
+    area is the state, which `state` already says.
+    """
+
+    lat: float
+    lng: float
+    radius_km: float
+
+    def contains(self, lat: float, lng: float) -> bool:
+        from road_cleaner.domain.geo import haversine_meters
+
+        return haversine_meters(lat, lng, self.lat, self.lng) <= self.radius_km * 1000
+
+    def distance_m(self, lat: float, lng: float) -> float:
+        from road_cleaner.domain.geo import haversine_meters
+
+        return haversine_meters(lat, lng, self.lat, self.lng)
+
+
 class Agency(Base):
     """Whoever is responsible for fixing the road."""
 
@@ -164,6 +193,10 @@ class Agency(Base):
     channel: Channel
     endpoint: str | None = None
     email: str | None = None
+    # Set on city agencies, whose patch is a good deal smaller than their state.
+    # Both the rules and the model's candidate list respect it -- see
+    # `candidates_for`, which is where its absence did real damage.
+    service_area: ServiceArea | None = None
     # e.g. "TMC-#####" -- used to generate plausible references in dry run and
     # to sanity-check what a real agency hands back.
     ref_format: str = "REF-#####"

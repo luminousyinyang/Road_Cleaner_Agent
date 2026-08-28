@@ -320,6 +320,27 @@ class Settings(BaseSettings):
     # it does not open the wall. Flipping it can never, by itself, put mail in a
     # real maintenance desk's inbox.
     dashcam_notify_dot: bool = Field(default=False, alias="DASHCAM_NOTIFY_DOT")
+    # Send the agency copy here instead of to the agency's own address.
+    #
+    # For the case where the responsible agency publishes no address at all --
+    # most of them, which is why `seeds/agencies.yaml` is mostly forms. WSDOT and
+    # Redmond are both like this, so without an override a dashcam report on
+    # those roads has nowhere to go and `dot_state` stays "held" for ever.
+    #
+    # Deliberately *not* a second address in `agencies.yaml`. That file records
+    # who owns which road and how they say to reach them; writing one city's
+    # address against another city's streets would be a lie in the one place the
+    # system trusts to be true, and the report body would still name the agency
+    # it was not sent to. A deployment redirecting its own mail is configuration.
+    #
+    # Read only by the live dashcam route. The case pipeline, the demo send and
+    # the drill are all untouched and keep going to whoever `agencies.yaml` says.
+    #
+    # Still has to clear `guard_live_send` -- put the address in
+    # LIVE_FILING_ALLOWLIST -- so setting this alone cannot mail anybody.
+    dashcam_dot_email_override: str | None = Field(
+        default=None, alias="DASHCAM_DOT_EMAIL_OVERRIDE"
+    )
 
     @property
     def auth_configured(self) -> bool:

@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 
 from road_cleaner.domain.enums import AgencyLevel, Channel, HazardType
-from road_cleaner.domain.models import Agency, Camera, Detection
+from road_cleaner.domain.models import Agency, Camera, Detection, ServiceArea
 from road_cleaner.logging import get_logger
 from road_cleaner.ports.reasoning import Reasoner
 
@@ -71,6 +71,11 @@ class JurisdictionRegistry:
                 ref_label=item.get("ref_label"),
                 sla_overrides=item.get("sla_overrides", {}) or {},
                 jurisdiction_note=item.get("jurisdiction_note"),
+                service_area=(
+                    ServiceArea(**item["service_area"])
+                    if item.get("service_area")
+                    else None
+                ),
             )
             for item in raw.get("agencies", [])
         ]
@@ -80,8 +85,23 @@ class JurisdictionRegistry:
         return list(self.agencies.values())
 
     def candidates_for(self, camera: Camera) -> list[Agency]:
-        """Every agency that could plausibly own this camera's road."""
-        return [a for a in self.agencies.values() if a.state == camera.state]
+        """Every agency that could plausibly own this camera's road.
+
+        The state filter is not enough on its own once a city agency has a real
+        address behind it. Asked about a hazard in Seattle, the model was offered
+        Bellevue's maintenance desk as a candidate -- because Bellevue is in
+        Washington -- and took it. That was harmless while every city in this
+        file was a form pointing at a `.invalid` endpoint, and stopped being
+        harmless the moment one of them became an inbox somebody reads.
+
+        So an agency that says where it works is only a candidate where it works.
+        """
+        return [
+            a
+            for a in self.agencies.values()
+            if a.state == camera.state
+            and (a.service_area is None or a.service_area.contains(camera.lat, camera.lng))
+        ]
 
     def resolve_by_rules(
         self, camera: Camera, detection: Detection, *, last_resort: bool = False
@@ -150,6 +170,9 @@ class JurisdictionRegistry:
         if by_county := rule.get("agency_by_county"):
             return self.agencies.get(by_county.get(camera.county or "", ""))
 
+        if rule.get("agency_by_service_area"):
+            return self._agency_by_service_area(camera)
+
         if by_state := rule.get("agency_by_state"):
             return self.agencies.get(by_state.get(camera.state, ""))
 
@@ -157,6 +180,39 @@ class JurisdictionRegistry:
             return self.agencies.get(agency_id)
 
         return None
+
+    def _agency_by_service_area(self, camera: Camera) -> Agency | None:
+        """The nearest agency whose own service area contains this point.
+
+        A coordinate carries no county and no road name, so none of the matchers
+        above can tell a city street from the state route running through it.
+        This does it geographically instead, reading each agency's declared area
+        rather than carrying a second copy of the geometry in the rule -- one
+        source of truth, so the rule and the candidate filter cannot disagree
+        about where a city ends.
+
+        Distance rather than `Place.nearest`, which was the first attempt and is
+        not fit for it. That field is the closest of 32,000 Census centroids, and
+        `places.py` is explicit that it means "near X" and never "in X" -- a pin
+        in downtown Bellevue comes back as Clyde Hill, a separate city with its
+        own public works department. Routing on that name would have sent
+        Bellevue's streets to a government that does not maintain them.
+
+        Nearest-wins resolves the overlap where two circles meet. No circle
+        containing the point means the rule does not match at all, and the state
+        DOT fallback below gets its turn.
+        """
+        best: tuple[float, Agency] | None = None
+        for agency in self.agencies.values():
+            area = agency.service_area
+            if agency.state != camera.state or area is None:
+                continue
+            if not area.contains(camera.lat, camera.lng):
+                continue
+            distance = area.distance_m(camera.lat, camera.lng)
+            if best is None or distance < best[0]:
+                best = (distance, agency)
+        return best[1] if best else None
 
     @staticmethod
     def _rationale(rule: dict, agency: Agency) -> str:
