@@ -56,6 +56,23 @@
   const gate = document.getElementById("dash-gate");
   const shareButton = document.getElementById("dash-share");
 
+  // The find dialog. Every one of these may be absent -- the page renders
+  // without it in older browsers -- so everything that touches them is guarded.
+  const findModal = document.getElementById("find-modal");
+  const findImage = document.getElementById("find-image");
+  const findOverlay = document.getElementById("find-overlay");
+  const findLabel = document.getElementById("find-label");
+  const findTitle = document.getElementById("find-title");
+  const findEyebrow = document.getElementById("find-eyebrow");
+  const findDescription = document.getElementById("find-description");
+  const findWhere = document.getElementById("find-where");
+  const findReport = document.getElementById("find-report");
+  const findShare = document.getElementById("find-share");
+  const findDismiss = document.getElementById("find-dismiss");
+  // The object URL behind the dialog's <img>, revoked when it closes. Without
+  // this every find leaks a blob for the life of the tab.
+  let findImageUrl = null;
+
   const auth = window.RoadCleaner?.auth;
   const authConfigured = root.dataset.auth === "on";
 
@@ -105,6 +122,7 @@
   // time somebody reaches for the button.
   let found = null;
   let here = null;       // {lat, lng, accuracy} once the browser tells us
+  let watch = null;      // the watchPosition id, while one is running
   let hold = null;       // the countdown on an unreported find, if one is up
   const pending = new Set();  // AbortControllers for the looks still out
 
@@ -222,36 +240,116 @@
     void look(nextSeq++);
   }
 
-  /* Where the phone is. Asked for once, alongside the camera.
+  /* --- where the phone is -----------------------------------------------
 
      A report with no location is not a report -- a road crew cannot act on
      "there is debris somewhere". So this either produces coordinates or says
-     out loud that it did not, and the report says the same. It never guesses. */
+     out loud that it did not, and the report says the same. It never guesses.
+
+     Two requests, not one, because they are asking different questions.
+
+     `getCurrentPosition` with `enableHighAccuracy` used to be the whole of it,
+     with a ten-second timeout. On a phone that is a coin flip: a cold GPS fix
+     regularly takes longer than ten seconds, and when it did, `here` stayed null
+     for the rest of the session. Every find after that was unreportable, and the
+     only sign of it was one line of grey text near the top of the page.
+
+     So: a coarse fix first, which the network can usually answer in a moment and
+     is easily good enough to name a road, and then a `watchPosition` that
+     refines it and keeps refining. A watch is the right primitive anyway -- this
+     is a camera in a moving vehicle, and a position from the start of the session
+     describes a place the car has since left. */
   function locate() {
     if (!navigator.geolocation) {
-      whereSlot.textContent = "This browser will not share a location.";
-      whereSlot.hidden = false;
+      showWhere("This browser will not share a location.");
       return;
     }
-    whereSlot.textContent = "Getting your location…";
+    // Geolocation is a secure-context API, exactly like the camera. Over plain
+    // http on a LAN address it fails with a bare POSITION_UNAVAILABLE, which
+    // reads as a hardware problem and is not one.
+    if (!window.isSecureContext) {
+      showWhere("Location needs a secure page — open this over https.");
+      return;
+    }
+
+    showWhere("Getting your location…");
+    stopWatching();
+
+    // The quick one. `maximumAge` accepts a fix the browser already had, which
+    // on a phone that has been navigating is usually instant.
+    navigator.geolocation.getCurrentPosition(gotPosition, noPosition, {
+      enableHighAccuracy: false,
+      timeout: 20000,
+      maximumAge: 60000,
+    });
+
+    // The good one, kept running. Its errors are deliberately ignored: the
+    // coarse fix above owns the error message, and a watch that cannot get a
+    // high-accuracy fix while a usable coarse one is on screen has nothing to
+    // add by overwriting it.
+    watch = navigator.geolocation.watchPosition(gotPosition, () => {}, {
+      enableHighAccuracy: true,
+      timeout: 30000,
+      maximumAge: 10000,
+    });
+  }
+
+  function gotPosition(position) {
+    here = {
+      lat: position.coords.latitude,
+      lng: position.coords.longitude,
+      accuracy: Math.round(position.coords.accuracy),
+    };
+    showWhere(`${here.lat.toFixed(5)}, ${here.lng.toFixed(5)} (±${here.accuracy}m)`);
+    // A find made before the fix arrived is still reportable -- see `keep`. Now
+    // that there is somewhere to send it, the button should stop saying there
+    // is not.
+    if (found) paintReportButton();
+  }
+
+  /* Why there is no location, in words that match what actually happened.
+
+     This used to be one sentence for all three causes: "allow it if you want a
+     report a crew can act on". Told to somebody who had already allowed it and
+     was simply waiting on a fix, that is not just unhelpful, it is wrong -- it
+     sends them to settings to check something that was never the problem. */
+  function noPosition(error) {
+    here = null;
+    const code = error && error.code;
+    if (code === 1 /* PERMISSION_DENIED */) {
+      showWhere("Location is blocked. Allow it for this site, then tap to retry.");
+    } else if (code === 3 /* TIMEOUT */) {
+      showWhere("Still no fix — a first one can take a while. Tap to retry.");
+    } else {
+      showWhere("Your phone could not get a fix here. Tap to retry.");
+    }
+    if (found) paintReportButton();
+  }
+
+  function showWhere(text) {
+    whereSlot.textContent = text;
     whereSlot.hidden = false;
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        here = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracy: Math.round(position.coords.accuracy),
-        };
-        whereSlot.textContent =
-          `${here.lat.toFixed(5)}, ${here.lng.toFixed(5)} (±${here.accuracy}m)`;
-      },
-      () => {
-        here = null;
-        whereSlot.textContent =
-          "No location — allow it if you want a report a crew can act on.";
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-    );
+  }
+
+  function stopWatching() {
+    if (watch !== null) navigator.geolocation.clearWatch(watch);
+    watch = null;
+  }
+
+  /* Tapping either location line asks again. A refused or timed-out fix is the
+     one failure on this page somebody can actually do something about, so it
+     must not need the camera stopped and restarted to have another go.
+
+     Both lines, and the second one is not redundant: a modal dialog sits in the
+     browser's top layer, so while a find is up the line on the page behind it
+     cannot be tapped at all. Driving this in a browser is how that turned up --
+     the retry existed and was unreachable at the exact moment somebody would
+     want it, which is while they are looking at a find they cannot report. */
+  whereSlot?.addEventListener("click", retryLocation);
+  findWhere?.addEventListener("click", retryLocation);
+
+  function retryLocation() {
+    if (stream) locate();
   }
 
   function stop(message) {
@@ -263,6 +361,10 @@
     // is no longer watching -- letting them land would draw a box over a stopped
     // camera, or worse, offer a stale find to report.
     abandonLooks();
+    // Let the GPS go too. A watch left running after Stop keeps the receiver
+    // awake and the location indicator lit, on a page that has finished with
+    // both -- the same reason the camera tracks are stopped just below.
+    stopWatching();
     if (stream) stream.getTracks().forEach((track) => track.stop());
     stream = null;
     video.srcObject = null;
@@ -276,6 +378,7 @@
     // held in memory here and nowhere else, and offering to report it after the
     // session it belongs to has ended is offering a stale frame.
     found = null;
+    closeFind();
     reportButton.hidden = true;
     if (shareButton) shareButton.hidden = true;
   }
@@ -421,6 +524,22 @@
     beginHold();
   }
 
+  /* Where the find happened, as well as it can be known.
+
+     `found.where` is the fix as it stood when the model answered, which is the
+     honest one: it is where the phone was when it saw the thing. But a first GPS
+     fix often lands *after* the first find, and the old code snapshotted null and
+     kept it -- so a find made in the first few seconds of a session stayed
+     permanently unreportable even once the phone knew exactly where it was.
+
+     So a fix that arrived late is used rather than discarded. The car has moved
+     a little in the seconds since, which is well inside the margin that already
+     applies to a hazard seen from a moving vehicle, and enormously better than
+     refusing to file a real hazard over it. */
+  function placeOf(finding) {
+    return finding.where || here;
+  }
+
   /* --- the decision window ----------------------------------------------
 
      Something has been found, so stop looking and offer it. Two reasons to
@@ -439,6 +558,7 @@
     reportButton.hidden = false;
     reportButton.disabled = false;
     if (shareButton) shareButton.hidden = false;
+    openFind();
 
     const tick = () => {
       const left = Math.ceil((until - Date.now()) / 1000);
@@ -447,6 +567,7 @@
         // only copy of that frame anywhere.
         clearHold();
         found = null;
+        closeFind();
         reportButton.hidden = true;
         if (shareButton) shareButton.hidden = true;
         clearBox();
@@ -454,11 +575,129 @@
         resumeLooking();
         return;
       }
-      reportButton.textContent = `Report it · ${left}s`;
+      paintReportButton(left);
     };
 
     tick();
     hold = setInterval(tick, 250);
+  }
+
+  /* --- the find dialog ---------------------------------------------------
+
+     The buttons in the bar are easy to miss on a phone held up to a windscreen,
+     and a find is gone in {HOLD_MS} either way. So the find is put in front of
+     you: the frame the model saw, the box on it, and the one button that matters.
+
+     Guarded throughout on `findModal` and on `showModal` being a function. The
+     dialog element is well supported now but not universally, and where it is
+     missing the page still works exactly as it did -- the bar buttons are shown
+     and driven the same way regardless of whether this dialog ever opens. */
+  function findDialogWorks() {
+    return Boolean(findModal && typeof findModal.showModal === "function");
+  }
+
+  function openFind() {
+    if (!findDialogWorks() || !found || findModal.open) return;
+    const result = found.result;
+
+    if (findTitle) findTitle.textContent = result.hazard_label || "A hazard";
+    if (findEyebrow) {
+      findEyebrow.textContent =
+        `Found something · ${result.confidence.toFixed(2)} confidence`;
+    }
+    if (findDescription) findDescription.textContent = result.description || "";
+
+    // The frame the model actually looked at, not the live preview behind it.
+    if (findImage) {
+      if (findImageUrl) URL.revokeObjectURL(findImageUrl);
+      findImageUrl = URL.createObjectURL(found.jpeg);
+      findImage.src = findImageUrl;
+      findImage.alt = `${result.hazard_label || "A hazard"}, as the model saw it.`;
+    }
+    // Positioned as percentages of the image, exactly as on the live preview and
+    // on the incidents page. The same fractions drive all three.
+    if (findOverlay) {
+      if (result.box) {
+        findOverlay.hidden = false;
+        findOverlay.style.left = pct(result.box.x);
+        findOverlay.style.top = pct(result.box.y);
+        findOverlay.style.width = pct(result.box.width);
+        findOverlay.style.height = pct(result.box.height);
+        findOverlay.classList.toggle("find__box-overlay--soft", !result.box_measured);
+        if (findLabel) findLabel.textContent = result.box_label || "";
+      } else {
+        findOverlay.hidden = true;
+      }
+    }
+
+    paintFindWhere();
+    findModal.showModal();
+  }
+
+  function closeFind() {
+    if (!findDialogWorks()) return;
+    if (findModal.open) findModal.close();
+    if (findImageUrl) {
+      URL.revokeObjectURL(findImageUrl);
+      findImageUrl = null;
+    }
+  }
+
+  /* Whether this find can actually be filed, said before the button is pressed.
+
+     This is the line the whole location fix is for. Reporting needs coordinates,
+     and somebody who is about to lose a find in ten seconds needs to know that
+     *now* -- not by pressing a button that appears to work and then does nothing
+     except put a sentence in a box further down the page. */
+  function paintFindWhere() {
+    if (!findWhere) return;
+    const place = found ? placeOf(found) : null;
+    if (place) {
+      findWhere.textContent =
+        `${place.lat.toFixed(5)}, ${place.lng.toFixed(5)} (±${place.accuracy}m)`;
+      findWhere.className = "find__where";
+    } else {
+      findWhere.textContent =
+        "No location yet — a crew cannot be sent to a report without one. " +
+        "Allow location, or tap here to try again.";
+      findWhere.className = "find__where find__where--missing";
+    }
+  }
+
+  /* The report buttons, in the bar and in the dialog, kept saying the same thing.
+
+     Both carry the countdown, and both go flat when there is nowhere to send the
+     report. A button that looks live and then refuses is the bug that started
+     all of this. */
+  function paintReportButton(secondsLeft) {
+    // No find: back to the resting label, live. Both buttons are hidden or the
+    // dialog is closed by the time this happens, but leaving a flat "No
+    // location" button behind would be the state the *next* find inherits.
+    if (!found) {
+      reportButton.textContent = "Report it";
+      reportButton.disabled = false;
+      if (findReport) {
+        findReport.textContent = "Report it now";
+        findReport.disabled = false;
+      }
+      return;
+    }
+
+    const place = placeOf(found);
+    const suffix = secondsLeft === undefined ? "" : ` · ${secondsLeft}s`;
+
+    reportButton.textContent = place
+      ? `Report it${suffix}`
+      : `No location${suffix}`;
+    reportButton.disabled = !place;
+
+    if (findReport) {
+      findReport.textContent = place
+        ? `Report it now${suffix}`
+        : `Waiting for location${suffix}`;
+      findReport.disabled = !place;
+    }
+    paintFindWhere();
   }
 
   function clearHold() {
@@ -525,6 +764,47 @@
   reportButton.addEventListener("click", keep);
   shareButton?.addEventListener("click", report);
 
+  // The dialog's buttons are the same two actions, plus letting the find go
+  // early. `keep` and `report` close the dialog themselves once they know what
+  // happened, so that a confirmation is not hidden the instant it is written.
+  findReport?.addEventListener("click", keep);
+  findShare?.addEventListener("click", report);
+  findDismiss?.addEventListener("click", dropFind);
+
+  /* Escape means the same thing as pressing "Let it go".
+
+     `preventDefault` then `dropFind` rather than letting the default close run,
+     because the two are not the same: the default would hide the dialog and
+     leave the find alive behind it, counting down invisibly with the camera
+     still paused. Dismissing the panel has to dismiss the thing it is about.
+
+     Only Escape, deliberately. A tap on the backdrop is not wired up -- native
+     dialogs do not close on one unless asked to, and here that default is the
+     right one. This panel is holding something that expires in seconds, and a
+     stray thumb on the way to the Report button should not throw it away. */
+  findModal?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    dropFind();
+  });
+
+  /* Let the find go now rather than waiting out its countdown. Deliberately the
+     same path the countdown takes: the frame is dropped whole, nothing is
+     uploaded, and looking picks back up. */
+  function dropFind() {
+    if (!found) {
+      closeFind();
+      return;
+    }
+    clearHold();
+    found = null;
+    closeFind();
+    reportButton.hidden = true;
+    if (shareButton) shareButton.hidden = true;
+    clearBox();
+    said.textContent = "Let that one go. Still looking.";
+    resumeLooking();
+  }
+
   /* Keep it: store the finding and mail it to whoever is signed in.
    *
    * This is the only path in this file that uploads anything. It sends the
@@ -543,10 +823,16 @@
     if (!signedIn()) {
       // Reachable if the token expired while the camera was running.
       paintGate();
+      closeFind();
       fail("Sign in first — the report goes to your inbox.");
       return;
     }
-    if (!found.where) {
+    // A fix that arrived after the find counts -- see `placeOf`. The buttons are
+    // disabled while this is null, so reaching here means somebody got past a
+    // flat button; it stays as a guard rather than a message, because by now the
+    // dialog has been saying there is no location for as long as it has been up.
+    const place = placeOf(found);
+    if (!place) {
       fail(
         "No location for that one, so there is nothing a crew could act on. " +
           "Allow location and try the next find."
@@ -559,6 +845,10 @@
     clearHold();
     reportButton.disabled = true;
     reportButton.textContent = "Saving…";
+    if (findReport) {
+      findReport.disabled = true;
+      findReport.textContent = "Saving…";
+    }
     status.textContent = "Working out whose road this is…";
 
     try {
@@ -572,8 +862,8 @@
       form.append(
         "meta",
         JSON.stringify({
-          lat: found.where.lat,
-          lng: found.where.lng,
+          lat: place.lat,
+          lng: place.lng,
           hazard: found.result.hazard,
           severity: found.result.severity,
           confidence: found.result.confidence,
@@ -610,6 +900,9 @@
       }
 
       found = null;
+      // Saved, so the dialog has done its job and the confirmation belongs on
+      // the page behind it rather than under a panel somebody has to dismiss.
+      closeFind();
       reportButton.hidden = true;
       if (shareButton) shareButton.hidden = true;
       clearBox();
@@ -625,10 +918,10 @@
         // It did not save. Put the find back on the clock rather than leaving
         // it pinned and the camera paused indefinitely -- a retry is one press
         // away, and if nobody retries it expires like any other and looking
-        // picks back up. `beginHold` writes the button label itself.
+        // picks back up. `beginHold` writes both button labels itself.
         beginHold();
       } else {
-        reportButton.textContent = "Report it";
+        paintReportButton();
       }
     }
   }
@@ -656,14 +949,19 @@
     // report. The same registry and the same sentences the rest of the system
     // uses -- this is not a second, parallel way of writing a report.
     let addressed = null;
-    if (found.where) {
+    // Sharing works without coordinates -- it produces a report that says out
+    // loud that the location was not recorded, which is a thing a person can
+    // still usefully hand to somebody. Only the agency lookup needs a position,
+    // so only that part is skipped.
+    const shared = placeOf(found);
+    if (shared) {
       try {
         const response = await fetch("/api/dashcam/report", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            lat: found.where.lat,
-            lng: found.where.lng,
+            lat: shared.lat,
+            lng: shared.lng,
             hazard: found.result.hazard,
             severity: found.result.severity,
             confidence: found.result.confidence,
@@ -764,9 +1062,10 @@
      what, where, when, and no claim that is not true. */
   function reportText(finding) {
     const r = finding.result;
-    const where = finding.where
-      ? `${finding.where.lat.toFixed(5)}, ${finding.where.lng.toFixed(5)} ` +
-        `(to within about ${finding.where.accuracy} m)`
+    const place = placeOf(finding);
+    const where = place
+      ? `${place.lat.toFixed(5)}, ${place.lng.toFixed(5)} ` +
+        `(to within about ${place.accuracy} m)`
       : "not recorded — the browser did not share a location";
 
     return [

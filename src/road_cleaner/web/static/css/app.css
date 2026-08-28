@@ -1700,6 +1700,81 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
    one a reflex press lands on. */
 .modal__actions .btn--primary { margin-left: auto; }
 
+/* --------------------------------------------------- the find dialog
+
+   Shown the moment the model finds something, because a find lasts seconds and
+   the buttons in the bar are easy to miss on a phone held up to a windscreen. */
+.find__box {
+  /* The picture is the point, so it gets the room the padding would take. */
+  padding: 22px 22px 24px;
+}
+/* Tall phones in portrait: the dialog must never grow past the viewport, or the
+   actions at the bottom -- the entire reason it is on screen -- scroll out of
+   reach with no indication they are there. */
+.find {
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+.find__media {
+  position: relative;
+  line-height: 0;
+  margin: 0 0 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--ink);
+}
+.find__media img { width: 100%; height: auto; display: block; }
+/* Positioned as percentages of the image, the same fractions the live preview
+   and the incidents page draw from. */
+.find__box-overlay {
+  position: absolute;
+  border: 2px solid var(--amber);
+  border-radius: 2px;
+  pointer-events: none;
+}
+/* Dashed when the model approximated the coordinates rather than measuring
+   them -- the same distinction every other box on the site draws. */
+.find__box-overlay--soft { border-style: dashed; }
+.find__box-label {
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  transform: translateY(-100%);
+  background: var(--amber);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.find__where {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+/* The one state somebody can act on, so it is the one that is allowed to shout.
+   Without coordinates the report cannot be filed at all, and finding that out by
+   pressing a button that does nothing is what this whole panel exists to fix. */
+.find__where--missing {
+  color: var(--ink);
+  border-left: 2px solid var(--amber);
+  padding-left: 10px;
+  /* It is a retry control while it says so, and has to look like one. */
+  cursor: pointer;
+}
+/* A disabled report button has to look disabled. It is flat whenever there is no
+   location yet, and that has to read as "not ready" rather than as a dud. */
+.find .btn[disabled],
+.dash__go[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .hand__facts {
   display: grid;
   grid-template-columns: auto 1fr;

@@ -905,6 +905,30 @@ class TestDashcam:
     def test_the_nav_offers_it(self, client):
         assert 'href="/dashcam"' in client.get("/").text
 
+    def test_a_find_gets_a_dialog_with_the_picture_in_it(self, client):
+        """A find lasts seconds, and the bar is easy to miss on a windscreen.
+
+        The picture is the part that has to be there. A panel saying "found
+        something" without showing what, next to a button that files a report to
+        a public agency, is asking somebody to vouch for something they have not
+        seen.
+        """
+        html = client.get("/dashcam").text
+        assert 'id="find-modal"' in html
+        assert 'id="find-image"' in html, "the dialog has no picture in it"
+        assert 'id="find-overlay"' in html, "the dialog cannot draw the box"
+        assert 'id="find-report"' in html
+        assert "Report it now" in html
+
+    def test_the_dialog_says_where_you_were(self, client):
+        """The line that stops the button from silently refusing.
+
+        Reporting needs coordinates. Without this line the first somebody knows
+        about not having any is a button that appears to work and then does
+        nothing -- which is exactly what it used to do.
+        """
+        assert 'id="find-where"' in client.get("/dashcam").text
+
     def test_the_page_hands_the_script_its_pacing(self, client):
         """The quota knobs live in settings, and the script reads them from here.
 

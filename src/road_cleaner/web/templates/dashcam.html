@@ -97,6 +97,46 @@
     </p>
   </section>
 </div>
+
+{# --- the find, put in front of you ---------------------------------------
+
+   A find lasts {{ report_window }} seconds and then it is gone for good. The
+   buttons in the bar above are easy to miss on a phone, especially with the
+   camera preview filling the screen and your eyes on the road rather than the
+   handset -- so the find comes to you instead, with the picture the model
+   actually saw and the box drawn on it.
+
+   Everything needed to decide is in here: what it found, where you were, and
+   what will happen if you press the button. The location line matters most. A
+   report with no coordinates cannot be filed, and finding that out by pressing
+   a button that then does nothing is the worst possible way to learn it. #}
+<dialog class="modal find" id="find-modal">
+  <div class="modal__box find__box">
+    <p class="modal__eyebrow" id="find-eyebrow">Found something</p>
+    <h2 class="modal__title" id="find-title">A hazard</h2>
+
+    <div class="find__media">
+      <img id="find-image" alt="The frame the model found a hazard in.">
+      <div class="find__box-overlay" id="find-overlay" hidden>
+        <span class="find__box-label" id="find-label"></span>
+      </div>
+    </div>
+
+    <p class="modal__lede" id="find-description"></p>
+    <p class="find__where" id="find-where"></p>
+
+    {# Three weights, so the eye lands in the right order on a phone: the
+       dismissal is a ghost, sharing keeps the ordinary amber, and reporting --
+       the thing this panel exists to ask -- is the only filled primary. #}
+    <div class="modal__actions">
+      <button class="btn btn--ghost" type="button" id="find-dismiss">Let it go</button>
+      <button class="btn" type="button" id="find-share">Share it yourself</button>
+      <button class="btn btn--primary" type="button" id="find-report">
+        Report it now
+      </button>
+    </div>
+  </div>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
