@@ -8,9 +8,9 @@
  * Three constraints shape all of it:
  *
  * 1. Quota. Each look is a Vertex call and there are only twenty or thirty of
- *    them before it throttles. So: one request in flight at a time, a deliberate
- *    gap between looks, and a counter on screen. A demo that dies mysteriously
- *    at look twenty-two is worse than one that tells you it is at look nineteen.
+ *    them a minute before it throttles. So: a deliberate gap between *starting*
+ *    looks, and a counter on screen. A demo that dies mysteriously at look
+ *    twenty-two is worse than one that tells you it is at look nineteen.
  * 2. Looking stops the moment something is found. A hazard is one object, and
  *    spending more quota on the thing you have already seen is waste. The find
  *    is held for a fixed window -- see `hold` -- and then dropped.
@@ -19,6 +19,22 @@
  *    that still is stored and mailed to you, and it is the only thing here that
  *    ever leaves the browser to be written down. A find that times out unpressed
  *    leaves nothing behind at all -- no record, no mail, nothing uploaded.
+ *
+ * Looks overlap, and that is the whole of why this page keeps up.
+ *
+ * It used to run one request at a time on a three-second timer, which sounds
+ * like a look every three seconds and is not: the timer could only start a look
+ * when the previous one had come back, so a five-second round trip made it a
+ * look every eight. Latency set the pace, and every slow frame was paid for
+ * twice.
+ *
+ * Now the gap and the round trip are independent. `pump` starts a look whenever
+ * fewer than MAX_IN_FLIGHT are outstanding and MIN_GAP_MS has passed since the
+ * last one started, so the gap alone decides how much quota is spent and the
+ * latency hides behind it. Overlapping means answers can arrive out of order, so
+ * every look carries a sequence number and one that comes back after a newer one
+ * has already been drawn is dropped -- see `look`. Without that the boxes would
+ * jump backwards onto a road that has moved on.
  */
 
 (function () {
@@ -43,9 +59,27 @@
   const auth = window.RoadCleaner?.auth;
   const authConfigured = root.dataset.auth === "on";
 
-  // Long enough that a minute of looking costs about twenty calls rather than
-  // sixty, short enough that the boxes still feel attached to the road.
-  const EVERY_MS = 3000;
+  /* Pacing. Server-supplied so the quota knob can be turned for a deployment
+     without editing this file; see the comments in `config.py`.
+
+     MIN_GAP_MS is the quota control -- it is the only thing that decides how
+     many calls a minute this makes. MAX_IN_FLIGHT is a pile-up control: it caps
+     how many slow looks may be outstanding at once, and raising it spends no
+     extra quota because the gap still governs how often one starts.
+
+     PUMP_MS is just how often the scheduler wakes to check those two. It is
+     deliberately much shorter than the gap so that a slot freeing up early is
+     noticed promptly rather than at the next multiple of the gap. */
+  const MIN_GAP_MS = Number(root.dataset.lookGap) || 2500;
+  const MAX_IN_FLIGHT = Math.max(1, Number(root.dataset.maxInFlight) || 3);
+  const PUMP_MS = 250;
+
+  // How long the browser waits for one look before abandoning it. The server
+  // applies its own, slightly shorter deadline and answers 504; this is the
+  // backstop for the case where the answer never arrives at all, which is what
+  // a phone dropping off the network looks like from in here. Without it an
+  // abandoned request would hold one of the MAX_IN_FLIGHT slots for ever.
+  const LOOK_TIMEOUT_MS = Number(root.dataset.lookTimeout) || 11000;
 
   // How long a find stays reportable before it is dropped. Server-supplied
   // (DASHCAM_REPORT_WINDOW_SECONDS) so the countdown on screen and the number in
@@ -59,9 +93,12 @@
   const JPEG_QUALITY = 0.8;
 
   let stream = null;
-  let timer = null;
-  let looking = false;   // a request is in flight; drop frames rather than queue
-  let looks = 0;
+  let timer = null;      // the pump, when looking is live
+  let inFlight = 0;      // looks currently waiting on the model
+  let lastLaunch = 0;    // when the most recent one started, for MIN_GAP_MS
+  let looks = 0;         // looks *started*, which is what the quota counts
+  let nextSeq = 1;       // stamped on each look, to order the answers
+  let newestDrawn = 0;   // the sequence number of the freshest answer drawn
   // The last frame the model found something in, kept whole: the JPEG it saw,
   // what it said, and where we were. Reporting has to send the picture the
   // finding is about, not whatever happens to be in front of the lens by the
@@ -69,7 +106,7 @@
   let found = null;
   let here = null;       // {lat, lng, accuracy} once the browser tells us
   let hold = null;       // the countdown on an unreported find, if one is up
-  const canvas = document.createElement("canvas");
+  const pending = new Set();  // AbortControllers for the looks still out
 
   toggle.addEventListener("click", () => (stream ? stop("Stopped.") : start()));
 
@@ -157,8 +194,32 @@
     counter.hidden = false;
 
     locate();
-    look();
-    timer = setInterval(look, EVERY_MS);
+    // Straight into the first look rather than waiting out a gap for it.
+    lastLaunch = 0;
+    timer = setInterval(pump, PUMP_MS);
+    pump();
+  }
+
+  /* The scheduler. Starts a look when there is room for one and enough time has
+     passed since the last one started.
+
+     Both conditions, and they do different jobs: the gap is what keeps the call
+     rate inside the quota, and the in-flight ceiling is what stops a run of slow
+     answers from queueing up behind each other. Neither alone is enough. */
+  function pump() {
+    if (!stream || !timer) return;
+    // A find pauses looking, and `found` is set before `pauseLooking` clears the
+    // timer, so this closes the window where a pump tick could start one more
+    // look at the very moment something was found.
+    if (found) return;
+    if (inFlight >= MAX_IN_FLIGHT) return;
+    if (Date.now() - lastLaunch < MIN_GAP_MS) return;
+
+    lastLaunch = Date.now();
+    // Not awaited: the pump's job is to start looks, not to wait for them. That
+    // is the entire point of the change -- a slow answer must not delay the next
+    // question. `look` reports its own failures.
+    void look(nextSeq++);
   }
 
   /* Where the phone is. Asked for once, alongside the camera.
@@ -197,6 +258,11 @@
     if (timer) clearInterval(timer);
     timer = null;
     clearHold();
+    // Abandon anything still out at the model. With looks overlapping there can
+    // be several, and every one of them is a question about a road this session
+    // is no longer watching -- letting them land would draw a box over a stopped
+    // camera, or worse, offer a stale find to report.
+    abandonLooks();
     if (stream) stream.getTracks().forEach((track) => track.stop());
     stream = null;
     video.srcObject = null;
@@ -214,39 +280,108 @@
     if (shareButton) shareButton.hidden = true;
   }
 
-  async function look() {
-    if (looking || !stream) return;
-    const jpeg = await capture();
-    if (!jpeg) return;
+  /* One look, stamped with `seq` so its answer can be placed in time.
 
-    looking = true;
+     Everything that reports progress counts looks *started*, not looks that came
+     back. A run of failures used to leave the counter frozen at whatever the
+     last success was, which reads exactly like the page has stopped -- and the
+     page had not stopped, it was retrying every three seconds and saying so
+     nowhere. The number on screen is the number of calls made, because that is
+     the number the quota is counting too. */
+  async function look(seq) {
+    if (!stream) return;
+    const jpeg = await capture();
+    // Checked again on the far side of the await: encoding a frame takes a
+    // moment, and Stop may have happened during it. Without this a look started
+    // just before Stop would go on to open a request the session no longer
+    // wants, and `abandonLooks` has already been and gone by then.
+    if (!jpeg || !stream) return;
+
+    inFlight += 1;
+    looks += 1;
+    paintCounter();
+
+    // A request the browser gives up on, rather than one that hangs holding a
+    // slot until the camera is switched off. Registered so `abandonLooks` can
+    // cut it short too.
+    const abort = new AbortController();
+    const deadline = setTimeout(() => abort.abort(), LOOK_TIMEOUT_MS);
+    pending.add(abort);
+
     try {
       const response = await fetch("/api/dashcam/look", {
         method: "POST",
         headers: { "Content-Type": "image/jpeg" },
         body: jpeg,
+        signal: abort.signal,
       });
-      looks += 1;
-      counter.textContent = `${looks} look${looks === 1 ? "" : "s"}`;
 
       if (!response.ok) {
         const detail = await describe(response);
         // Out of quota is the expected ending, not a crash. Say so and stop
-        // rather than hammering a throttled endpoint every three seconds.
+        // rather than hammering a throttled endpoint.
         if (response.status === 503) {
           stop("Out of model quota for now — give it a minute.");
+          fail(detail);
+          return;
+        }
+        // 504 is one slow frame, not a broken page: the server gave up on it so
+        // the road would not get further away while it waited. Say so quietly
+        // and let the next look have a go -- there are others in flight already.
+        if (response.status === 504) {
+          notice("That frame took too long — skipped it.");
+          return;
         }
         fail(detail);
         return;
       }
 
-      show(await response.json(), jpeg);
+      // Overlapping looks can answer out of order. An answer older than one
+      // already on screen describes a road that has since moved, so it is
+      // dropped rather than drawn -- otherwise the box jumps backwards.
+      if (seq < newestDrawn) return;
+      newestDrawn = seq;
+
+      const result = await response.json();
+      // The camera may have been switched off, or something else found, while
+      // this was in the air. Either way there is nothing left to draw on.
+      if (!stream || found) return;
+
+      show(result, jpeg);
       errorSlot.hidden = true;
     } catch (err) {
-      fail(err.message || "Could not reach the model.");
+      // An abort is either the deadline above or `abandonLooks` on the way out
+      // of a session. Neither deserves an error box: the first is one skipped
+      // frame, the second is somebody having pressed Stop.
+      if (err && err.name === "AbortError") {
+        if (stream) notice("That frame took too long — skipped it.");
+      } else {
+        fail((err && err.message) || "Could not reach the model.");
+      }
     } finally {
-      looking = false;
+      clearTimeout(deadline);
+      pending.delete(abort);
+      inFlight -= 1;
+      paintCounter();
     }
+  }
+
+  /* Give up on every look still out at the model. Called when a session ends, so
+     that answers about a road nobody is watching any more cannot land.
+
+     `inFlight` is deliberately not zeroed here. Each aborted fetch still runs its
+     own `finally`, which decrements it -- and one of those aborts is often the
+     look that called `stop` in the first place, on its way through a 503. Zeroing
+     as well would double-count every one of them and leave the counter negative,
+     which the next session would read as room for extra concurrent looks. */
+  function abandonLooks() {
+    pending.forEach((abort) => abort.abort());
+    pending.clear();
+  }
+
+  function paintCounter() {
+    const waiting = inFlight > 0 ? ` · ${inFlight} in flight` : "";
+    counter.textContent = `${looks} look${looks === 1 ? "" : "s"}${waiting}`;
   }
 
   function capture() {
@@ -254,6 +389,11 @@
     const height = video.videoHeight;
     if (!width || !height) return Promise.resolve(null);
 
+    // A canvas per capture, not one shared between them. `toBlob` reads the
+    // bitmap asynchronously, so with looks overlapping a shared canvas could be
+    // redrawn by the next capture before the previous one had finished encoding
+    // -- and the model would be asked about one frame while being sent another.
+    const canvas = document.createElement("canvas");
     const scale = Math.min(1, SEND_WIDTH / width);
     canvas.width = Math.round(width * scale);
     canvas.height = Math.round(height * scale);
@@ -338,15 +478,19 @@
   }
 
   /* Start looking again after a find is dealt with.
-     `note` replaces the default status line, so a confirmation worth reading --
-     "sent to you@example.com" -- is not wiped out by "Looking…" a millisecond
-     after it appears. */
-  function resumeLooking(note) {
+     `message` replaces the default status line, so a confirmation worth reading
+     -- "sent to you@example.com" -- is not wiped out by "Looking…" a
+     millisecond after it appears. */
+  function resumeLooking(message) {
     // Only if the camera is still on. A hold that expires after somebody hit
     // Stop must not quietly start the loop up again.
     if (!stream || timer) return;
-    status.textContent = note || "Looking…";
-    timer = setInterval(look, EVERY_MS);
+    status.textContent = message || "Looking…";
+    // Straight back to looking rather than sitting out a gap first: the pause
+    // was somebody reading a find, and the quota was not being spent during it.
+    lastLaunch = 0;
+    timer = setInterval(pump, PUMP_MS);
+    pump();
   }
 
   function drawBox(result) {
@@ -699,6 +843,15 @@
   function fail(message) {
     errorSlot.textContent = message;
     errorSlot.hidden = false;
+  }
+
+  /* A frame that did not work out, which is not the same as a page that did not.
+     Skipped frames are ordinary here -- the model is throttled, a phone's uplink
+     stalls -- and putting each one in the red error box would suggest something
+     needs fixing when the next look is already on its way. This goes on the
+     status line instead, and the next answer overwrites it. */
+  function notice(message) {
+    status.textContent = message;
   }
 
   async function describe(response) {

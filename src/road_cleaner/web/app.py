@@ -11,6 +11,7 @@ than faking it.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -522,6 +523,19 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 # before accounts existed rather than offering a dead button.
                 "auth_configured": c.settings.auth_configured,
                 "report_window": c.settings.dashcam_report_window_seconds,
+                # Pacing lives in settings rather than in the script, so the
+                # quota knob can be turned for a deployment without editing
+                # JavaScript. See the comments on these in `config.py`.
+                "max_in_flight": c.settings.dashcam_max_in_flight,
+                "look_gap_ms": c.settings.dashcam_look_gap_ms,
+                # The browser's backstop, deliberately two seconds longer than
+                # the server's own deadline. They are racing to end the same
+                # request and the server should win: it answers 504 with a
+                # sentence explaining the skip, where the browser can only
+                # abort and produce a bare network error.
+                "look_timeout_ms": int(
+                    (c.settings.dashcam_look_timeout_seconds + 2) * 1000
+                ),
             },
         )
 
@@ -557,7 +571,27 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         camera = _dashcam_camera()
         frame = Frame(camera_id=camera.id, blob_key="", phash="")
         try:
-            detection = await c.vision.analyze(image, frame, camera)
+            # Bounded, because `analyze` is not. Underneath it `with_retry` will
+            # spend up to 31 seconds of backoff on six attempts before giving up,
+            # which is the right behaviour for the background pipeline and the
+            # wrong behaviour for something a viewfinder is waiting on. Cancelling
+            # at the deadline turns a frozen page into a skipped frame.
+            detection = await asyncio.wait_for(
+                c.vision.analyze(image, frame, camera),
+                timeout=c.settings.dashcam_look_timeout_seconds,
+            )
+        except TimeoutError:
+            # 504, not 503, and the difference is load-bearing on the client:
+            # this frame was too slow, the next one may well not be, so the
+            # camera keeps looking. A 503 below means the model is refusing
+            # outright and looking on would just burn the remaining quota.
+            raise HTTPException(
+                status_code=504,
+                detail=(
+                    f"That frame took longer than "
+                    f"{c.settings.dashcam_look_timeout_seconds:.0f}s. Skipped it."
+                ),
+            ) from None
         except VisionUnavailableError as exc:
             # Never silently "nothing here" -- a model that could not be reached
             # is not a clear road, and on a viewfinder the difference is the

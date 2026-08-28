@@ -284,6 +284,33 @@ class Settings(BaseSettings):
     dashcam_report_window_seconds: int = Field(
         default=15, alias="DASHCAM_REPORT_WINDOW_SECONDS"
     )
+    # How long one look may take before the viewfinder gives up on it.
+    #
+    # The number that matters most on this page. `with_retry` is built for a
+    # background pipeline: six attempts with exponential backoff, which is up to
+    # 31 seconds of sleeping plus six call latencies before it admits defeat.
+    # That is right for a Cloud Scheduler tick and completely wrong for a person
+    # holding a phone -- one throttled frame would freeze the viewfinder for the
+    # best part of a minute, and the browser would usually drop the connection
+    # first and report it as a network error.
+    #
+    # So the interactive path gets its own, much shorter deadline. A frame that
+    # cannot be answered inside it is not worth answering: the road has moved on.
+    dashcam_look_timeout_seconds: float = Field(
+        default=9.0, alias="DASHCAM_LOOK_TIMEOUT_SECONDS"
+    )
+    # How many looks may be waiting on the model at once, and the smallest gap
+    # between starting two of them.
+    #
+    # These are what stop round-trip time from setting the pace. Serially, a look
+    # every 3s with a 5s round trip is a look every 8s; overlapped, the gap alone
+    # sets the rate and the latency is hidden behind it. The gap is therefore the
+    # quota knob -- 2.5s is roughly 24 calls a minute, inside the twenty-to-thirty
+    # Vertex allows -- and the in-flight ceiling only stops a pile-up when the
+    # model is slow. Raising the ceiling does not spend more quota; lowering the
+    # gap does.
+    dashcam_max_in_flight: int = Field(default=3, alias="DASHCAM_MAX_IN_FLIGHT")
+    dashcam_look_gap_ms: int = Field(default=2500, alias="DASHCAM_LOOK_GAP_MS")
     # Whether a reported dashcam finding is also mailed to the agency that owns
     # the road, on top of the copy that goes to whoever reported it.
     #

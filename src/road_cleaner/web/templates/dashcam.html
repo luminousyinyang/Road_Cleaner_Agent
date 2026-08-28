@@ -5,7 +5,10 @@
 <div class="wrap">
   <section class="dash" id="dash"
            data-auth="{{ 'on' if auth_configured else 'off' }}"
-           data-report-window="{{ report_window }}">
+           data-report-window="{{ report_window }}"
+           data-max-in-flight="{{ max_in_flight }}"
+           data-look-gap="{{ look_gap_ms }}"
+           data-look-timeout="{{ look_timeout_ms }}">
     <div class="dash__intro">
       <h1 class="dash__title">Point it at a road.</h1>
       <p class="dash__lede">
@@ -72,10 +75,12 @@
     </div>
 
     <p class="dash__note">
-      One look every few seconds, each one a call to <code>{{ model }}</code>.
-      Vertex throttles at roughly twenty to thirty, so this is a short demo and the
-      counter tells you where you are. When it finds something it stops looking —
-      a hazard is one object, and more calls on it buy nothing.
+      A look every {{ '%.1f'|format(look_gap_ms / 1000) }} seconds, each one a call
+      to <code>{{ model }}</code>. Up to {{ max_in_flight }} of them are in the air
+      at once, so a slow answer holds up the picture rather than the next question.
+      Vertex throttles at roughly twenty to thirty a minute, so this is a short demo
+      and the counter tells you where you are. When it finds something it stops
+      looking — a hazard is one object, and more calls on it buy nothing.
     </p>
     <p class="dash__note">
       <strong>Only what you report is kept.</strong> Every frame goes to the model

@@ -7,6 +7,7 @@ a browser would. No credentials, no network.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 import pytest
 import pytest_asyncio
@@ -903,6 +904,160 @@ class TestDashcam:
 
     def test_the_nav_offers_it(self, client):
         assert 'href="/dashcam"' in client.get("/").text
+
+    def test_the_page_hands_the_script_its_pacing(self, client):
+        """The quota knobs live in settings, and the script reads them from here.
+
+        If these stop being rendered the script silently falls back to its own
+        defaults, and a deployment that turned the gap up to protect its quota
+        would go on spending at the old rate with nothing to show for it.
+        """
+        html = client.get("/dashcam").text
+        for attribute in ("data-look-gap", "data-max-in-flight", "data-look-timeout"):
+            assert attribute in html, f"{attribute} is not on the page"
+
+    def test_the_browser_waits_longer_than_the_server_does(self, client):
+        """Two deadlines race the same request, and the server has to win.
+
+        The server answers 504 with a sentence a person can read. The browser can
+        only abort and produce a bare network error -- which is exactly the
+        useless "Load failed" this whole path was changed to stop showing.
+        """
+        import re
+
+        html = client.get("/dashcam").text
+        backstop = int(re.search(r'data-look-timeout="(\d+)"', html).group(1))
+        server = client.app.state.container.settings.dashcam_look_timeout_seconds
+        assert backstop > server * 1000
+
+    def test_the_copy_describes_the_pacing_actually_in_force(self, client):
+        """The page explains the quota trade-off, so the numbers must be real."""
+        settings = client.app.state.container.settings
+        html = client.get("/dashcam").text
+        assert f"every {settings.dashcam_look_gap_ms / 1000:.1f} seconds" in html
+        assert f"Up to {settings.dashcam_max_in_flight} of them" in html
+
+
+class TestTheLookIsBounded:
+    """A viewfinder must not be made to wait as long as the pipeline will.
+
+    `with_retry` gives the background pipeline six attempts and up to 31 seconds
+    of backoff, which is right for a Cloud Scheduler tick and disastrous behind a
+    camera preview: one throttled frame froze the page for the best part of a
+    minute, and the phone usually dropped the connection before the answer came,
+    reporting it as a bare network error.
+
+    So the interactive route has its own deadline, and the status code says which
+    kind of "no" it is -- 504 for a frame worth skipping, 503 for a model that has
+    stopped answering and a session worth ending.
+    """
+
+    JPEG = b"\xff\xd8\xff\xe0" + b"stub jpeg bytes"
+
+    @contextmanager
+    def _looking_at(self, tmp_path, analyze):
+        """A client whose vision adapter does whatever `analyze` does."""
+        from fastapi.testclient import TestClient
+
+        from road_cleaner.config import Settings
+        from road_cleaner.web.app import create_app
+
+        settings = Settings(
+            ROAD_CLEANER_MODE="local",
+            DRY_RUN=True,
+            DATA_DIR=str(tmp_path),
+            SQLITE_PATH=str(tmp_path / "t.db"),
+            BLOB_LOCAL_PATH=str(tmp_path / "frames"),
+            FILING_SANDBOX_INBOX=str(tmp_path / "outbox"),
+            LOG_LEVEL="ERROR",
+            # Short enough to keep the suite quick. The route reads this setting,
+            # so the behaviour under test is the real one.
+            DASHCAM_LOOK_TIMEOUT_SECONDS=0.2,
+        )
+        with TestClient(create_app(settings)) as client:
+            client.app.state.container.vision = _Vision(analyze)
+            yield client
+
+    def _look(self, client):
+        return client.post(
+            "/api/dashcam/look", content=self.JPEG, headers={"Content-Type": "image/jpeg"}
+        )
+
+    def test_a_slow_frame_is_skipped_not_waited_out(self, tmp_path):
+        """504, and quickly -- the route must not sit on the retry budget."""
+        import asyncio
+        import time
+
+        async def forever(*args, **kwargs):
+            await asyncio.sleep(30)
+
+        with self._looking_at(tmp_path, forever) as client:
+            started = time.monotonic()
+            r = self._look(client)
+            elapsed = time.monotonic() - started
+
+        assert r.status_code == 504
+        assert "skipped" in r.json()["detail"].lower()
+        # The point of the whole change: it gave up near its own deadline rather
+        # than near the 31 seconds `with_retry` would have spent.
+        assert elapsed < 5, f"waited {elapsed:.1f}s on a 0.2s deadline"
+
+    def test_a_model_that_refuses_is_still_a_503(self, tmp_path):
+        """Distinct from the timeout, because the client does different things.
+
+        503 ends the session -- the quota is gone and looking on would spend what
+        is left of it for nothing. 504 skips one frame and keeps going.
+        """
+        from road_cleaner.ports.vision import VisionUnavailableError
+
+        async def refuse(*args, **kwargs):
+            raise VisionUnavailableError("Gemini call failed after 6 attempts")
+
+        with self._looking_at(tmp_path, refuse) as client:
+            assert self._look(client).status_code == 503
+
+    def test_a_prompt_answer_still_gets_through(self, tmp_path):
+        """The deadline must not be so eager that it eats ordinary answers."""
+
+        async def quick(*args, **kwargs):
+            return None
+
+        with self._looking_at(tmp_path, quick) as client:
+            r = self._look(client)
+
+        assert r.status_code == 200
+        assert r.json()["found"] is False
+
+    def test_a_cancelled_look_does_not_take_the_server_with_it(self, tmp_path):
+        """The next frame has to be answerable after one has been abandoned."""
+        import asyncio
+
+        state = {"slow": True}
+
+        async def slow_once(*args, **kwargs):
+            if state["slow"]:
+                state["slow"] = False
+                await asyncio.sleep(30)
+            return None
+
+        with self._looking_at(tmp_path, slow_once) as client:
+            assert self._look(client).status_code == 504
+            assert self._look(client).status_code == 200
+
+
+class _Vision:
+    """A vision adapter that does whatever it was handed."""
+
+    model_name = "test-model"
+
+    def __init__(self, analyze):
+        self._analyze = analyze
+
+    async def analyze(self, image, frame, camera):
+        return await self._analyze(image, frame, camera)
+
+    async def prefilter(self, image, frame, camera):
+        return True
 
 
 class TestSendHandsOverWithoutNavigating:
