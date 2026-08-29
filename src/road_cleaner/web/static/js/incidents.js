@@ -9,6 +9,14 @@
  * The box is redrawn over the still from the fractions the model returned. It
  * is also burned into the stored image, so this is belt and braces; drawing it
  * live means the caption stays legible at whatever size the card renders.
+ *
+ * The stills are fetched, not linked, and that is the same problem again rather
+ * than a preference. `<img src="/api/incidents/…/image">` makes a plain browser
+ * request, and a browser does not put an Authorization header on one -- so the
+ * route, which quite rightly demands a verified uid, answered every one of them
+ * with 401 and every card showed a broken-image icon. The bytes have to come
+ * back through `auth.fetch` like everything else here, and go into the tag as a
+ * blob URL. See `paintImage`.
  */
 
 (function () {
@@ -87,9 +95,10 @@
       figure.className = "inc__media";
 
       const img = document.createElement("img");
-      img.src = incident.image_url;
       img.alt = `${incident.hazard} at ${incident.location}`;
-      img.loading = "lazy";
+      // No `src` yet, and no `loading="lazy"` either -- neither means anything
+      // for an image whose bytes arrive over fetch. `paintImage` fills it in.
+      paintImage(img, incident);
       figure.appendChild(img);
 
       if (incident.box) {
@@ -143,11 +152,10 @@
     fact(facts, "When", incident.when);
     fact(facts, "Agency", incident.agency || "none resolved");
     fact(facts, "Emailed to", mailLine(incident));
-    // Four states, because "we did not try", "we tried and were refused" and
-    // "somebody else already reported it" are different facts. The middle one
-    // usually means DASHCAM_NOTIFY_DOT is on while the address is not
-    // allowlisted, which is a settings answer, so say it.
-    fact(facts, "DOT", dotLine(incident));
+    // No DOT row. It spent most of its life reading "not sent — reporting to
+    // agencies is off", which is a fact about this deployment's configuration
+    // rather than about the hazard in the picture, and it was the same on every
+    // card. `dot_state` is still on the API for anyone who wants it.
     article.appendChild(facts);
     // Below the facts, because it is the explanation for the two "not sent"
     // lines directly above it rather than a fact of its own.
@@ -177,11 +185,30 @@
     return "not sent — the mail server refused";
   }
 
-  function dotLine(incident) {
-    if (incident.dot_state === "sent") return `sent to ${incident.dot_destination}`;
-    if (incident.dot_state === "refused") return `not sent — ${incident.dot_error}`;
-    if (incident.dot_state === "duplicate") return "not sent — already reported";
-    return "not sent — reporting to agencies is off";
+  /* Fetch the still with the bearer token and put it in the tag.
+
+     The route resolves the blob key server-side from a record looked up under
+     the caller's own uid, which is what makes it safe -- and also what makes it
+     impossible to load with a bare `src`, because the browser sends no token on
+     an image request. So the bytes come back through `auth.fetch` and go in as a
+     blob URL.
+
+     Failure is left as an empty `<img>` rather than an error on the card. The
+     record is the thing worth keeping and the rest of it is right there; a whole
+     card turning red because one photograph would not load overstates it. */
+  async function paintImage(img, incident) {
+    try {
+      const response = await auth.fetch(incident.image_url);
+      if (!response.ok) return;
+      const blob = await response.blob();
+      img.src = URL.createObjectURL(blob);
+      // Released once decoded. Without this every card holds its still in memory
+      // for the life of the tab, which on a phone is a real cost after a few
+      // dozen of them.
+      img.addEventListener("load", () => URL.revokeObjectURL(img.src), { once: true });
+    } catch {
+      /* leave it blank */
+    }
   }
 
   function fact(list, label, value) {

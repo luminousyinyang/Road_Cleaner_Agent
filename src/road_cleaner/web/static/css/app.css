@@ -1704,27 +1704,79 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 
    Shown the moment the model finds something, because a find lasts seconds and
    the buttons in the bar are easy to miss on a phone held up to a windscreen. */
+/* The dialog must never grow past the viewport, or the actions at the bottom --
+   the entire reason it is on screen -- go out of reach. A phone held sideways is
+   the case that breaks: the viewport is barely 400px tall, and a 16:9 still at
+   the dialog's full width is taller than that on its own, which pushed "Report
+   it now" clean off the bottom.
+
+   So the box is a column that owns the height, and the picture is the part that
+   gives way. */
+.find {
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: hidden;
+}
 .find__box {
   /* The picture is the point, so it gets the room the padding would take. */
-  padding: 22px 22px 24px;
-}
-/* Tall phones in portrait: the dialog must never grow past the viewport, or the
-   actions at the bottom -- the entire reason it is on screen -- scroll out of
-   reach with no indication they are there. */
-.find {
-  max-height: calc(100vh - 32px);
-  max-height: calc(100dvh - 32px);
+  padding: 20px 22px 0;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  /* The fallback, for a viewport shorter than even the tightened landscape
+     layout below. Clipping instead would hide the buttons with no way to reach
+     them, which is the bug being fixed. */
   overflow-y: auto;
 }
+/* Pinned to the bottom of the scroll area, so "Report it now" is on screen
+   whatever the picture's aspect ratio does to the height above it. Opaque,
+   because the still scrolls underneath. */
+.find__box > .modal__actions {
+  position: sticky;
+  bottom: 0;
+  margin-top: 16px;
+  padding: 10px 0 20px;
+  background: var(--paper);
+}
+
+/* `fit-content`, and that is load-bearing rather than cosmetic. The box overlay
+   is positioned in percentages of this element, so the element has to be exactly
+   the size of the rendered image -- a full-width block with a letterboxed image
+   inside it would put the box somewhere the hazard is not. Shrink-wrapping keeps
+   the percentages honest at whatever size the image ends up, and `margin: auto`
+   still centres it because this stays a block. */
 .find__media {
   position: relative;
+  display: block;
+  width: fit-content;
   line-height: 0;
-  margin: 0 0 16px;
+  margin: 0 auto 14px;
   border-radius: 8px;
   overflow: hidden;
   background: var(--ink);
+  max-width: 100%;
 }
-.find__media img { width: 100%; height: auto; display: block; }
+.find__media img {
+  display: block;
+  max-width: 100%;
+  /* The give. Portrait leaves it generous; landscape is where it earns its
+     keep, and the media query below tightens it further. */
+  max-height: 48vh;
+  max-height: 48dvh;
+  width: auto;
+  height: auto;
+}
+
+/* A phone on its side. Height is the scarce dimension, so the picture yields
+   most of it and the text tightens up, which is what keeps the primary action
+   on screen without the dialog needing to scroll at all. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .find__box { padding: 14px 18px 0; }
+  .find__media img { max-height: 40vh; max-height: 40dvh; }
+  .find__box > .modal__title { font-size: 19px; margin-bottom: 8px; }
+  .find__box > .modal__eyebrow { margin-bottom: 6px; }
+  .find__box > .modal__lede { font-size: 13.5px; margin-bottom: 10px; }
+  .find__box > .modal__actions { margin-top: 12px; padding: 8px 0 14px; }
+}
 /* Positioned as percentages of the image, the same fractions the live preview
    and the incidents page draw from. */
 .find__box-overlay {

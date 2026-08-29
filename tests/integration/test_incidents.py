@@ -437,3 +437,31 @@ class TestOwnership:
 
     def test_a_made_up_incident_id_is_a_404_not_a_500(self, client):
         assert client.get("/api/incidents/nope/image").status_code == 404
+
+    def test_the_still_needs_the_token_so_it_cannot_be_an_img_src(self, settings):
+        """Why the incidents page fetches its stills instead of linking them.
+
+        The route demands a verified uid, which is right -- it is somebody's own
+        photograph. The consequence is easy to miss: a browser puts no
+        Authorization header on an `<img src>` request, so every card that
+        linked its still got a 401 and rendered a broken-image icon. Deployed,
+        that was the entire symptom.
+
+        The rest of this module overrides `require_user`, so it cannot catch
+        this. This one deliberately does not, which is the only way the real
+        browser condition shows up in a test at all.
+        """
+        app = create_app(settings)
+        app.dependency_overrides[require_user] = lambda: SOMEBODY
+        app.dependency_overrides[require_mailable_user] = lambda: SOMEBODY
+        with TestClient(app) as client:
+            incident = save(client).json()
+
+        # Same request a bare <img src> would make: no Authorization header.
+        app.dependency_overrides.clear()
+        with TestClient(app) as anonymous:
+            r = anonymous.get(incident["image_url"])
+        assert r.status_code in (401, 501), (
+            "an unauthenticated still request must be refused -- if this ever "
+            "starts passing, somebody's photograph is public"
+        )
