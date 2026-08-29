@@ -890,35 +890,35 @@ class TestTheAllowlistIsNarrowerThanTheSwitch:
             return True
         return False
 
-    @pytest.mark.parametrize("destination", [*REAL_AGENCIES, "kylezemel@gmail.com"])
+    @pytest.mark.parametrize("destination", [*REAL_AGENCIES, "driver@example.com"])
     def test_nothing_sends_when_nothing_is_configured(self, monkeypatch, destination):
         guard = self._guard(monkeypatch)
         assert self._refuses(guard, destination)
 
     def test_an_allowlisted_address_sends(self, monkeypatch):
-        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="kylezemel@gmail.com")
-        assert not self._refuses(guard, "kylezemel@gmail.com")
+        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="driver@example.com")
+        assert not self._refuses(guard, "driver@example.com")
 
     @pytest.mark.parametrize("destination", REAL_AGENCIES)
     def test_a_real_agency_is_still_refused_alongside_it(self, monkeypatch, destination):
         """The whole point. One address opening is not every address opening."""
-        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="kylezemel@gmail.com")
+        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="driver@example.com")
         assert self._refuses(guard, destination)
 
     def test_it_needs_neither_dry_run_nor_the_global_switch(self, monkeypatch):
         """Otherwise the demo would cost exactly the unlock it exists to avoid."""
         guard = self._guard(
             monkeypatch,
-            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com",
+            LIVE_FILING_ALLOWLIST="driver@example.com",
             DRY_RUN="true",
             ALLOW_LIVE_FILING="false",
         )
-        assert not self._refuses(guard, "kylezemel@gmail.com")
+        assert not self._refuses(guard, "driver@example.com")
 
     def test_the_address_is_matched_case_insensitively(self, monkeypatch):
         """A recipient typed with different capitals is the same mailbox."""
-        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="KyleZemel@Gmail.com")
-        assert not self._refuses(guard, "kylezemel@gmail.com  ")
+        guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="Driver@Example.com")
+        assert not self._refuses(guard, "driver@example.com  ")
 
     def test_an_empty_destination_is_never_allowlisted(self, monkeypatch):
         """A blank entry must not become a wildcard."""
@@ -927,7 +927,7 @@ class TestTheAllowlistIsNarrowerThanTheSwitch:
 
     def test_an_empty_allowlist_permits_nothing(self, monkeypatch):
         guard = self._guard(monkeypatch, LIVE_FILING_ALLOWLIST="   ")
-        assert self._refuses(guard, "kylezemel@gmail.com")
+        assert self._refuses(guard, "driver@example.com")
 
     def test_the_refusal_still_names_what_to_do(self, monkeypatch):
         from road_cleaner.ports.filing_channel import FilingError

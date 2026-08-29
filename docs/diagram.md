@@ -3,6 +3,22 @@
 Mermaid rather than an exported image: it renders on GitHub, it diffs in review,
 and it cannot drift out of date behind a PNG nobody regenerated.
 
+PNGs are generated *from* these blocks and live in [`img/`](img/), for places
+that cannot render mermaid. They are a build artifact of this file, never the
+source — regenerate them rather than editing them:
+
+```bash
+make diagrams        # docs/diagram.md -> docs/img/*.png
+```
+
+| | |
+|---|---|
+| [The system](img/01-system.png) | The four-agent fleet, end to end |
+| [The dashcam path](img/02-dashcam.png) | A phone on a windscreen |
+| [One drill](img/03-drill.png) | What runs when you type a hazard |
+| [Deployment](img/04-deployment.png) | What runs where on Google Cloud |
+| [The boundary](img/05-boundary.png) | Why synthetic media can never be filed |
+
 ## The system
 
 ```mermaid
@@ -64,6 +80,62 @@ flowchart TB
     class g guard
 ```
 
+## The second way in — a phone on a windscreen
+
+The fleet above watches public cameras on a schedule. This is the other input:
+a person driving, with the same model, the same gate vocabulary and the same
+jurisdiction registry behind it. Nothing is stored unless they press the button.
+
+```mermaid
+flowchart TB
+    phone["📱 Phone camera<br/><i>a frame every 2.5s</i>"]
+
+    subgraph browser["Browser — nothing kept here"]
+        pump["Look scheduler<br/>up to 6 in flight<br/><i>sequence-ordered, stale replies dropped</i>"]
+        modal["Find dialog<br/><i>picture + box + countdown</i>"]
+        geo["Geolocation<br/><i>required before the camera opens</i>"]
+    end
+
+    look["<b>POST /api/dashcam/look</b><br/>20s deadline · nothing written"]
+    gemini2["<b>Gemini 3.7 Flash</b><br/>Vertex AI"]
+
+    subgraph keep["Only if the button is pressed"]
+        dedup["<b>24h duplicate check</b><br/>same hazard family, within 500m,<br/>across <i>all</i> users"]
+        juris["Jurisdiction registry<br/><i>city service area → state DOT</i>"]
+        store[("Incident store<br/>Firestore / disk<br/><i>scoped by uid</i>")]
+        mail["Email channel<br/><i>reporter + agency</i>"]
+    end
+
+    auth["Firebase Auth<br/><i>verified ID token → uid</i>"]
+
+    phone --> pump --> look --> gemini2
+    gemini2 -.->|hazard + box| modal
+    geo --> pump
+    modal -->|"Report it now"| dedup
+    auth -.->|uid| dedup
+    dedup -->|first report| juris --> mail
+    dedup -->|"already reported"| store
+    juris --> store
+
+    classDef google fill:#1D4E6B,stroke:#0E1116,color:#EAF3F9
+    classDef store fill:#F2F5F8,stroke:#94A5B4,color:#1A1A18
+    classDef guard fill:#FBEDE7,stroke:#B4451F,color:#1A1A18
+    class gemini2,auth google
+    class store store
+    class dedup guard
+```
+
+Three things on that path are worth naming, because they are where the judgement
+lives rather than the plumbing:
+
+* **Every frame is discarded.** `/api/dashcam/look` writes nothing at all — no
+  frame, no detection, no case. Only a find somebody actively reports is kept.
+* **The duplicate check crosses users.** One pothole driven past by forty people
+  is one email, not forty. It reads a projection — hazard type, coordinates,
+  timestamp — never anybody's photograph or address.
+* **A report needs coordinates or it does not go.** The camera will not open
+  without location permission, because a crew cannot be sent to "somewhere".
+
 ## One drill, end to end
 
 What runs when you type a hazard into the console. Every box except the first
@@ -104,6 +176,54 @@ sequenceDiagram
         Note over Drill,Channel: STOP. compose() only — transmit() is never called,<br/>and the case is marked synthetic, which the<br/>Dispatcher refuses to file outright.
     end
     Drill-->>You: the report, and a Send button that cannot be pressed
+```
+
+## What runs where, on Google Cloud
+
+The deployed shape. Every box marked *port* has a second implementation that
+runs on a laptop with no credentials, which is why `make demo` works on a clean
+clone — see [architecture.md](architecture.md).
+
+```mermaid
+flowchart TB
+    user["Driver / dashboard viewer"]
+
+    subgraph gcp["Google Cloud — project road-cleaner"]
+        run["<b>Cloud Run</b><br/>road-cleaner-dashboard<br/><i>FastAPI · scales to zero</i>"]
+
+        subgraph vertex["Vertex AI"]
+            v1["Gemini 3.7 Flash<br/><i>hazard vision</i>"]
+            v2["Google ADK<br/><i>jurisdiction · report prose</i>"]
+            v3["Veo 3.1 · Lyria · Chirp 3 HD<br/><i>re-staging, off by default</i>"]
+            v4["Gemma 4<br/><i>drill scaffold</i>"]
+        end
+
+        fb["Firebase Auth<br/><i>Google sign-in → uid</i>"]
+        fs[("Firestore<br/><i>cases · incidents</i>")]
+        gcs[("Cloud Storage<br/><i>evidence frames</i>")]
+        ps["Pub/Sub<br/><i>port written, memory bus in use</i>"]
+    end
+
+    smtp["SMTP → agency desks<br/><i>guarded: allowlist + DRY_RUN</i>"]
+
+    user -->|HTTPS| run
+    user -.->|sign in| fb
+    fb -.->|verified token| run
+    run --> v1
+    run --> v2
+    run --> v3
+    run --> v4
+    run --> fs
+    run --> gcs
+    run -.-> ps
+    run -->|"only past guard_live_send"| smtp
+
+    classDef google fill:#1D4E6B,stroke:#0E1116,color:#EAF3F9
+    classDef store fill:#F2F5F8,stroke:#94A5B4,color:#1A1A18
+    classDef guard fill:#FBEDE7,stroke:#B4451F,color:#1A1A18
+    class v1,v2,v3,v4,fb,run google
+    class fs,gcs store
+    class smtp guard
 ```
 
 ## Where the boundary sits

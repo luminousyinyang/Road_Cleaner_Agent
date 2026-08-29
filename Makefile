@@ -74,6 +74,11 @@ clean: ## Delete generated data (database, frames, outbox)
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 	rm -rf .pytest_cache .ruff_cache
 
+.PHONY: diagrams
+diagrams: ## Re-render docs/img/*.png from the mermaid in docs/diagram.md
+	@command -v npx >/dev/null || { echo "needs node on PATH"; exit 1; }
+	$(VENV)/bin/python docs/render_diagrams.py
+
 .PHONY: deploy
 deploy: ## Deploy to Google Cloud:  make deploy PROJECT=my-project
 	@[ -n "$(PROJECT)" ] || { echo "usage: make deploy PROJECT=your-gcp-project"; exit 1; }

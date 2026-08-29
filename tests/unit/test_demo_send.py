@@ -24,7 +24,7 @@ import road_cleaner.config as cfg
 from road_cleaner.pipeline.demo_send import DemoSend, DemoSendError
 from road_cleaner.pipeline.drill import DrillResult, StageReport
 
-RECIPIENT = "kylezemel@gmail.com"
+RECIPIENT = "driver@example.com"
 
 
 class FakeSMTP:

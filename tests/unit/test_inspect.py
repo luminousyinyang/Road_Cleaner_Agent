@@ -173,38 +173,38 @@ class TestTheSendStageOnlyExistsWhereItCanBeUsed:
 
     def test_a_recipient_without_the_allowlist_is_refused(self):
         got = self._inspector(
-            DEMO_SEND_TO="kylezemel@gmail.com", SMTP_HOST="smtp.gmail.com",
+            DEMO_SEND_TO="driver@example.com", SMTP_HOST="smtp.gmail.com",
             LIVE_FILING_ALLOWLIST="",
         )._demo_recipient()
         assert got is None
 
     def test_an_allowlist_without_a_recipient_sends_nowhere(self):
         got = self._inspector(
-            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com", SMTP_HOST="smtp.gmail.com",
+            LIVE_FILING_ALLOWLIST="driver@example.com", SMTP_HOST="smtp.gmail.com",
             DEMO_SEND_TO="",
         )._demo_recipient()
         assert got is None
 
     def test_no_mail_server_means_no_recipient(self):
         got = self._inspector(
-            DEMO_SEND_TO="kylezemel@gmail.com",
-            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com", SMTP_HOST="",
+            DEMO_SEND_TO="driver@example.com",
+            LIVE_FILING_ALLOWLIST="driver@example.com", SMTP_HOST="",
         )._demo_recipient()
         assert got is None
 
     def test_all_three_together_unlock_it(self):
         got = self._inspector(
-            DEMO_SEND_TO="kylezemel@gmail.com",
-            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com",
+            DEMO_SEND_TO="driver@example.com",
+            LIVE_FILING_ALLOWLIST="driver@example.com",
             SMTP_HOST="smtp.gmail.com",
         )._demo_recipient()
-        assert got == "kylezemel@gmail.com"
+        assert got == "driver@example.com"
 
     def test_a_real_agency_address_can_never_become_the_recipient(self):
         """The allowlist is the fence, and it is checked against the recipient."""
         got = self._inspector(
             DEMO_SEND_TO="contact@dot.ga.gov",
-            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com",
+            LIVE_FILING_ALLOWLIST="driver@example.com",
             SMTP_HOST="smtp.gmail.com",
         )._demo_recipient()
         assert got is None
@@ -688,8 +688,8 @@ class TestTheAutomaticSend:
 
         settings = cfg.Settings(
             ROAD_CLEANER_MODE="local", MEDIA_LOCAL_PATH=str(tmp_path),
-            DEMO_SEND_TO="kylezemel@gmail.com",
-            LIVE_FILING_ALLOWLIST="kylezemel@gmail.com",
+            DEMO_SEND_TO="driver@example.com",
+            LIVE_FILING_ALLOWLIST="driver@example.com",
             SMTP_HOST="smtp.gmail.com", SMTP_USER="bot@example.test",
             SMTP_PASSWORD="pw", FILING_FROM_ADDRESS="bot@example.test",
         )
@@ -721,7 +721,7 @@ class TestTheAutomaticSend:
         TestTheAutomaticSend.FakeSMTP.sent = {}
         with patch("smtplib.SMTP", TestTheAutomaticSend.FakeSMTP):
             await inspector._send(
-                result, by_key, case, agency, "kylezemel@gmail.com", publish
+                result, by_key, case, agency, "driver@example.com", publish
             )
         return result, by_key
 
@@ -730,9 +730,9 @@ class TestTheAutomaticSend:
     ):
         result, by_key = await self._run(tmp_path, monkeypatch)
         assert result.filed is True
-        assert result.sent_to == "kylezemel@gmail.com"
+        assert result.sent_to == "driver@example.com"
         assert by_key["send"].state == "done"
-        assert "Delivered to kylezemel@gmail.com" in by_key["send"].detail
+        assert "Delivered to driver@example.com" in by_key["send"].detail
 
     async def test_it_goes_to_the_allowlisted_inbox_not_the_agency(
         self, tmp_path, monkeypatch
@@ -740,7 +740,7 @@ class TestTheAutomaticSend:
         """The agency is resolved for real and is still not the recipient."""
         await self._run(tmp_path, monkeypatch)
         message = TestTheAutomaticSend.FakeSMTP.sent["message"]
-        assert message["To"] == "kylezemel@gmail.com"
+        assert message["To"] == "driver@example.com"
         assert "dot.ga.gov" not in message["To"]
 
     async def test_the_boxed_still_rides_along(self, tmp_path, monkeypatch):
