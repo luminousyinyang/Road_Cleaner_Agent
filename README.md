@@ -22,6 +22,37 @@ labelled as such: see [Simulation](#simulation--synthetic-footage-from-real-haza
 
 ---
 
+## For hackathon judges
+
+Built for the **All Things Agentic Hackathon** — track: **Taskmaster**.
+
+| | |
+|---|---|
+| **Live service** | https://road-cleaner-dashboard-6yx6cifega-uc.a.run.app |
+| **Spin-up guide** | [Quickstart](#quickstart--no-credentials-no-cloud-account-two-commands) — two commands, no credentials |
+| **Architecture diagram** | [`docs/diagram.md`](docs/diagram.md) · PNGs in [`docs/img/`](docs/img/) |
+| **Deploy to your own project** | [`make deploy PROJECT=…`](#deploying-to-google-cloud) |
+| **Submission write-up** | [`docs/submission.md`](docs/submission.md) |
+
+Required tech, and where to find each one in the source:
+
+| Requirement | Used | Where |
+|---|---|---|
+| Gemini 3.5+ via Vertex AI | `gemini-3.7-flash` | [`adapters/vision/gemini_vision.py`](src/road_cleaner/adapters/vision/gemini_vision.py) |
+| A Google agent framework | **Google ADK** — `LlmAgent`, `Runner` | [`adapters/reasoning/adk_reasoner.py`](src/road_cleaner/adapters/reasoning/adk_reasoner.py), [`agents/coordinator.py`](src/road_cleaner/agents/coordinator.py) |
+| A Google Cloud service | **Cloud Run** + Firebase Auth, both live | [`deploy/deploy.sh`](deploy/deploy.sh), [`web/auth.py`](src/road_cleaner/web/auth.py) |
+| *Bonus:* other Google models | Gemma 4, Veo 3.1 (pipeline) · Chirp 3 HD, Lyria | [`adapters/media/`](src/road_cleaner/adapters/media/), [`pipeline/drill.py`](src/road_cleaner/pipeline/drill.py) |
+
+Firestore, Cloud Storage and Pub/Sub adapters are written and tested, but the
+deployed revision runs SQLite, local disk and an in-process bus —
+`deploy.sh --with-firestore` switches the first two. Said plainly here because
+"uses Google Cloud" should mean something specific.
+
+`root_agent` is exported from [`agents/coordinator.py`](src/road_cleaner/agents/coordinator.py),
+so the agent team can be driven directly from `adk web`.
+
+---
+
 ## Quickstart — no credentials, no cloud account, two commands
 
 ```bash
@@ -66,7 +97,7 @@ Other useful commands:
 
 ```bash
 make doctor    # which adapter is wired to each port, and what's missing to go live
-make test      # the whole suite — 300+ tests, still no credentials
+make test      # the whole suite — 882 tests, still no credentials
 make outbox    # the reports that would have been sent
 make clean     # delete all generated data
 ```

@@ -39,8 +39,6 @@ flowchart TB
         gemini["<b>Gemini 3.7 Flash</b><br/>Vertex AI<br/><i>hazard vision</i>"]
         adk["<b>Google ADK</b><br/>LlmAgent + Runner<br/><i>jurisdiction, report prose</i>"]
         veo["<b>Veo 3.1</b><br/><i>dashcam re-staging</i>"]
-        chirp["<b>Chirp 3 HD</b><br/><i>spoken briefing</i>"]
-        lyria["<b>Lyria</b><br/><i>reel score</i>"]
     end
 
     subgraph gate["The confidence gate — pure Python, no model"]
@@ -69,13 +67,11 @@ flowchart TB
     watcher --> blobs
     dispatcher --> repo
     repo --> veo --> media
-    repo --> chirp --> media
-    lyria --> media
 
     classDef google fill:#1D4E6B,stroke:#0E1116,color:#EAF3F9
     classDef store fill:#F2F5F8,stroke:#94A5B4,color:#1A1A18
     classDef guard fill:#FBEDE7,stroke:#B4451F,color:#1A1A18
-    class gemma,gemini,adk,veo,chirp,lyria google
+    class gemma,gemini,adk,veo google
     class repo,blobs,media store
     class g guard
 ```
@@ -194,14 +190,19 @@ flowchart TB
         subgraph vertex["Vertex AI"]
             v1["Gemini 3.7 Flash<br/><i>hazard vision</i>"]
             v2["Google ADK<br/><i>jurisdiction · report prose</i>"]
-            v3["Veo 3.1 · Lyria · Chirp 3 HD<br/><i>re-staging, off by default</i>"]
+            v3["Veo 3.1<br/><i>re-staging, on request</i>"]
             v4["Gemma 4<br/><i>drill scaffold</i>"]
         end
 
         fb["Firebase Auth<br/><i>Google sign-in → uid</i>"]
-        fs[("Firestore<br/><i>cases · incidents</i>")]
-        gcs[("Cloud Storage<br/><i>evidence frames</i>")]
-        ps["Pub/Sub<br/><i>port written, memory bus in use</i>"]
+
+        subgraph ports["Behind ports — adapters written, not enabled on this revision"]
+            fs[("Firestore")]
+            gcs[("Cloud Storage")]
+            ps["Pub/Sub"]
+        end
+
+        local[("SQLite + local disk<br/><i>what the deployed revision runs</i>")]
     end
 
     smtp["SMTP → agency desks<br/><i>guarded: allowlist + DRY_RUN</i>"]
@@ -213,16 +214,15 @@ flowchart TB
     run --> v2
     run --> v3
     run --> v4
-    run --> fs
-    run --> gcs
-    run -.-> ps
+    run --> local
+    run -.->|"deploy.sh --with-firestore"| ports
     run -->|"only past guard_live_send"| smtp
 
     classDef google fill:#1D4E6B,stroke:#0E1116,color:#EAF3F9
     classDef store fill:#F2F5F8,stroke:#94A5B4,color:#1A1A18
     classDef guard fill:#FBEDE7,stroke:#B4451F,color:#1A1A18
     class v1,v2,v3,v4,fb,run google
-    class fs,gcs store
+    class fs,gcs,local store
     class smtp guard
 ```
 

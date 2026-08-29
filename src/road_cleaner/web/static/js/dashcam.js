@@ -198,11 +198,12 @@
     /* Location first, and before the camera on purpose.
 
        It used to run after `getUserMedia` had resolved, and on a phone the
-       prompt frequently never appeared at all -- iOS Safari shows permission
-       prompts one at a time, and a second request arriving in the moment the
-       first is dismissed gets dropped rather than queued. The camera prompt won
-       and the location prompt was silently lost, which is why a session could
-       run for minutes and every find come out unreportable.
+       prompt frequently never appeared at all -- the camera prompt was answered
+       and the location one simply never showed, so a session could run for
+       minutes with every find coming out unreportable. The likeliest reading is
+       that a second permission request arriving as the first is dismissed gets
+       dropped rather than queued; what is certain is that moving it in front of
+       the camera made the prompt appear reliably.
 
        Asking first also means the tap that started this is still the most recent
        user gesture, which is what a browser wants to see before it will prompt
