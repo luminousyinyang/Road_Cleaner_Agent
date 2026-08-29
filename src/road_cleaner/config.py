@@ -294,10 +294,23 @@ class Settings(BaseSettings):
     # best part of a minute, and the browser would usually drop the connection
     # first and report it as a network error.
     #
-    # So the interactive path gets its own, much shorter deadline. A frame that
-    # cannot be answered inside it is not worth answering: the road has moved on.
+    # So the interactive path gets its own deadline, well short of the retry
+    # budget but not short of the model.
+    #
+    # Twenty seconds, from measurement rather than taste. Cloud Run logs for a
+    # real phone session: successful looks ran 1.98s to 8.57s, median about 4.7s,
+    # and a third of all frames hit the old nine-second cut-off. Nine seconds was
+    # landing around the 67th percentile of a long-tailed distribution.
+    #
+    # The argument for waiting is that the call is already paid for. Cancelling
+    # at nine seconds still bills a Gemini vision call and throws the answer
+    # away; waiting a few seconds longer costs nothing further and usually
+    # produces one. And a late answer is not a wrong answer here -- the client
+    # stamps every look with a sequence number and drops any that arrives after a
+    # fresher one has been drawn, so the worst case for a slow reply is that it is
+    # discarded on arrival, exactly as a timeout would have been.
     dashcam_look_timeout_seconds: float = Field(
-        default=9.0, alias="DASHCAM_LOOK_TIMEOUT_SECONDS"
+        default=20.0, alias="DASHCAM_LOOK_TIMEOUT_SECONDS"
     )
     # How many looks may be waiting on the model at once, and the smallest gap
     # between starting two of them.
@@ -309,8 +322,35 @@ class Settings(BaseSettings):
     # Vertex allows -- and the in-flight ceiling only stops a pile-up when the
     # model is slow. Raising the ceiling does not spend more quota; lowering the
     # gap does.
-    dashcam_max_in_flight: int = Field(default=3, alias="DASHCAM_MAX_IN_FLIGHT")
+    #
+    # The ceiling has to be generous enough for the *slow* looks, not the median
+    # ones, and that is why it is six rather than three. With a twenty-second
+    # deadline a straggler holds its slot far longer than a typical look does, so
+    # at three the pipeline spent much of its time at the ceiling and simply
+    # stopped starting new looks -- raising the deadline on its own measurably
+    # *lowered* throughput. Six absorbs the tail. It costs no extra quota, because
+    # the gap alone decides how often a look starts.
+    dashcam_max_in_flight: int = Field(default=6, alias="DASHCAM_MAX_IN_FLIGHT")
     dashcam_look_gap_ms: int = Field(default=2500, alias="DASHCAM_LOOK_GAP_MS")
+    # Refuse to start the camera until the browser has granted location.
+    #
+    # A report with no coordinates cannot be filed -- `_compose_dashcam_report`
+    # rejects it, and rightly, because a crew cannot be sent to "somewhere". So
+    # a session without location can look at a road all day and never produce
+    # anything reportable, and the person only finds that out at the moment they
+    # try to report a hazard they have just driven past.
+    #
+    # Gating on *permission*, not on a fix. A first GPS lock can take a while and
+    # blocking the camera on one would be its own bug; what this refuses is a
+    # session that is never going to get a location at all. The report button
+    # stays disabled until an actual fix lands, which is a separate check.
+    #
+    # Turn it off to demonstrate the detection on a machine with no GPS -- the
+    # boxes are worth watching on their own, which is why this is a switch and
+    # not a hardcoded rule.
+    dashcam_require_location: bool = Field(
+        default=True, alias="DASHCAM_REQUIRE_LOCATION"
+    )
     # Whether a reported dashcam finding is also mailed to the agency that owns
     # the road, on top of the copy that goes to whoever reported it.
     #

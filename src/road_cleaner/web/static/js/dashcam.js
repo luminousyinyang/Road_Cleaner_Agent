@@ -98,6 +98,12 @@
   // abandoned request would hold one of the MAX_IN_FLIGHT slots for ever.
   const LOOK_TIMEOUT_MS = Number(root.dataset.lookTimeout) || 11000;
 
+  // Whether the camera may start at all without location. See
+  // DASHCAM_REQUIRE_LOCATION -- the short version is that a find with no
+  // coordinates cannot be filed, so a session without them wastes both quota and
+  // somebody's attention.
+  const requireLocation = root.dataset.requireLocation !== "off";
+
   // How long a find stays reportable before it is dropped. Server-supplied
   // (DASHCAM_REPORT_WINDOW_SECONDS) so the countdown on screen and the number in
   // the page copy cannot disagree with each other.
@@ -114,6 +120,7 @@
   let inFlight = 0;      // looks currently waiting on the model
   let lastLaunch = 0;    // when the most recent one started, for MIN_GAP_MS
   let looks = 0;         // looks *started*, which is what the quota counts
+  let skipped = 0;       // ones the deadline caught, shown as a tally not an alarm
   let nextSeq = 1;       // stamped on each look, to order the answers
   let newestDrawn = 0;   // the sequence number of the freshest answer drawn
   // The last frame the model found something in, kept whole: the JPEG it saw,
@@ -187,6 +194,31 @@
     found = null;
     reportButton.hidden = true;
     if (shareButton) shareButton.hidden = true;
+
+    /* Location first, and before the camera on purpose.
+
+       It used to run after `getUserMedia` had resolved, and on a phone the
+       prompt frequently never appeared at all -- iOS Safari shows permission
+       prompts one at a time, and a second request arriving in the moment the
+       first is dismissed gets dropped rather than queued. The camera prompt won
+       and the location prompt was silently lost, which is why a session could
+       run for minutes and every find come out unreportable.
+
+       Asking first also means the tap that started this is still the most recent
+       user gesture, which is what a browser wants to see before it will prompt
+       for something like this at all. */
+    if (requireLocation) {
+      status.textContent = "Asking for your location…";
+      const verdict = await ensureLocationPermission();
+      if (!verdict.ok) {
+        toggle.disabled = false;
+        status.textContent = "Ready.";
+        fail(verdict.reason);
+        showWhere(verdict.short);
+        return;
+      }
+    }
+
     status.textContent = "Asking for the camera…";
 
     try {
@@ -259,6 +291,95 @@
      refines it and keeps refining. A watch is the right primitive anyway -- this
      is a camera in a moving vehicle, and a position from the start of the session
      describes a place the car has since left. */
+  /* Get location permission settled before the camera opens.
+
+     Resolves `{ok: true}` once the browser will give us positions, or
+     `{ok: false, reason, short}` when it will not and no amount of waiting
+     changes that.
+
+     Gates on permission, never on a fix. A first GPS lock outdoors can take
+     twenty seconds and indoors may never come; refusing to open the camera over
+     that would be a worse bug than the one this fixes. What it refuses is a
+     session that is *never* going to produce a location -- a blocked site, a
+     browser without geolocation, an insecure page. Once permission is granted
+     the watch fills the position in whenever it arrives, and the report buttons
+     stay disabled until it does. */
+  async function ensureLocationPermission() {
+    if (!navigator.geolocation) {
+      return {
+        ok: false,
+        short: "This browser will not share a location.",
+        reason:
+          "This browser will not share a location, and a report without one " +
+          "cannot be sent to a crew.",
+      };
+    }
+    if (!window.isSecureContext) {
+      return {
+        ok: false,
+        short: "Location needs a secure page — open this over https.",
+        reason:
+          "Location needs a secure page. Open this over https, or on localhost.",
+      };
+    }
+
+    // Asked first where it is supported, because it is the only way to tell
+    // "blocked" from "not asked yet" *without* firing a prompt. A blocked site
+    // fails `getCurrentPosition` instantly and silently, which is exactly what
+    // looks like "I never saw the request".
+    let state = null;
+    try {
+      // Not `status` -- that is the page's status line, and shadowing it here
+      // would be a trap for the next person to add a line to this block.
+      const permission = await navigator.permissions?.query({ name: "geolocation" });
+      state = permission?.state ?? null;
+    } catch {
+      // Safari has historically thrown on this query rather than resolving.
+      // Not knowing is fine -- fall through and let the prompt decide.
+      state = null;
+    }
+
+    if (state === "denied") return blockedVerdict();
+    if (state === "granted") {
+      locate();
+      return { ok: true };
+    }
+
+    // Either "prompt" or unknown. This call is what actually raises the dialog,
+    // and it is deliberately the first thing this page asks for.
+    const granted = await new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          gotPosition(position);
+          resolve(true);
+        },
+        (error) => resolve(error?.code !== 1 /* PERMISSION_DENIED */),
+        // Generous, because this is a real first fix and the alternative is
+        // telling somebody they are blocked when they simply had not answered
+        // yet. A timeout is not a refusal: it resolves true and the watch
+        // carries on trying.
+        { enableHighAccuracy: false, timeout: 25000, maximumAge: 60000 }
+      );
+    });
+
+    if (!granted) return blockedVerdict();
+    locate();
+    return { ok: true };
+  }
+
+  function blockedVerdict() {
+    return {
+      ok: false,
+      short: "Location is blocked for this site.",
+      reason:
+        "Location is blocked for this site, so a find here could never be " +
+        "reported. On iPhone: tap the ⚙ or “aA” in the address bar → Website " +
+        "Settings → Location → Ask or Allow, then press Start again. If it is " +
+        "off for Safari everywhere, it is Settings → Privacy & Security → " +
+        "Location Services → Safari Websites.",
+    };
+  }
+
   function locate() {
     if (!navigator.geolocation) {
       showWhere("This browser will not share a location.");
@@ -272,16 +393,23 @@
       return;
     }
 
-    showWhere("Getting your location…");
     stopWatching();
 
-    // The quick one. `maximumAge` accepts a fix the browser already had, which
-    // on a phone that has been navigating is usually instant.
-    navigator.geolocation.getCurrentPosition(gotPosition, noPosition, {
-      enableHighAccuracy: false,
-      timeout: 20000,
-      maximumAge: 60000,
-    });
+    // The quick one, skipped when the permission gate has just produced a fix of
+    // its own -- there is no sense asking a phone where it is twice in the same
+    // second, and the watch below keeps it current from here.
+    if (here) {
+      showWhere(`${here.lat.toFixed(5)}, ${here.lng.toFixed(5)} (±${here.accuracy}m)`);
+    } else {
+      showWhere("Getting your location…");
+      // `maximumAge` accepts a fix the browser already had, which on a phone
+      // that has been navigating is usually instant.
+      navigator.geolocation.getCurrentPosition(gotPosition, noPosition, {
+        enableHighAccuracy: false,
+        timeout: 20000,
+        maximumAge: 60000,
+      });
+    }
 
     // The good one, kept running. Its errors are deliberately ignored: the
     // coarse fix above owns the error message, and a watch that cannot get a
@@ -348,8 +476,25 @@
   whereSlot?.addEventListener("click", retryLocation);
   findWhere?.addEventListener("click", retryLocation);
 
-  function retryLocation() {
-    if (stream) locate();
+  async function retryLocation() {
+    if (stream) {
+      locate();
+      return;
+    }
+    // No camera running, which with DASHCAM_REQUIRE_LOCATION on usually means
+    // Start was refused for exactly this reason. Re-check rather than doing
+    // nothing: somebody who has just been told to change a Safari setting will
+    // come back and tap this, and the answer may well be different now.
+    if (!requireLocation) return;
+    showWhere("Checking…");
+    const verdict = await ensureLocationPermission();
+    if (verdict.ok) {
+      errorSlot.hidden = true;
+      showWhere("Location allowed. Press Start looking.");
+    } else {
+      showWhere(verdict.short);
+      fail(verdict.reason);
+    }
   }
 
   function stop(message) {
@@ -429,10 +574,12 @@
           return;
         }
         // 504 is one slow frame, not a broken page: the server gave up on it so
-        // the road would not get further away while it waited. Say so quietly
-        // and let the next look have a go -- there are others in flight already.
+        // the road would not get further away while it waited. Counted, not
+        // announced -- several other looks are already in the air, and the next
+        // answer is usually only a second or two behind.
         if (response.status === 504) {
-          notice("That frame took too long — skipped it.");
+          skipped += 1;
+          paintCounter();
           return;
         }
         fail(detail);
@@ -457,7 +604,10 @@
       // of a session. Neither deserves an error box: the first is one skipped
       // frame, the second is somebody having pressed Stop.
       if (err && err.name === "AbortError") {
-        if (stream) notice("That frame took too long — skipped it.");
+        if (stream) {
+          skipped += 1;
+          paintCounter();
+        }
       } else {
         fail((err && err.message) || "Could not reach the model.");
       }
@@ -484,7 +634,12 @@
 
   function paintCounter() {
     const waiting = inFlight > 0 ? ` · ${inFlight} in flight` : "";
-    counter.textContent = `${looks} look${looks === 1 ? "" : "s"}${waiting}`;
+    // Skips belong here, as a tally, not on the status line. They are ordinary
+    // -- the model has a long tail and several looks are always in the air -- and
+    // a sentence that replaces "Looking…" every few seconds reads as a broken
+    // page rather than as one frame of many going unanswered.
+    const slow = skipped > 0 ? ` · ${skipped} slow` : "";
+    counter.textContent = `${looks} look${looks === 1 ? "" : "s"}${waiting}${slow}`;
   }
 
   function capture() {
@@ -1142,15 +1297,6 @@
   function fail(message) {
     errorSlot.textContent = message;
     errorSlot.hidden = false;
-  }
-
-  /* A frame that did not work out, which is not the same as a page that did not.
-     Skipped frames are ordinary here -- the model is throttled, a phone's uplink
-     stalls -- and putting each one in the red error box would suggest something
-     needs fixing when the next look is already on its way. This goes on the
-     status line instead, and the next answer overwrites it. */
-  function notice(message) {
-    status.textContent = message;
   }
 
   async function describe(response) {

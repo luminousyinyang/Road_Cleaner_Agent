@@ -528,6 +528,7 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 # JavaScript. See the comments on these in `config.py`.
                 "max_in_flight": c.settings.dashcam_max_in_flight,
                 "look_gap_ms": c.settings.dashcam_look_gap_ms,
+                "require_location": c.settings.dashcam_require_location,
                 # The browser's backstop, deliberately two seconds longer than
                 # the server's own deadline. They are racing to end the same
                 # request and the server should win: it answers 504 with a

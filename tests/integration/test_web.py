@@ -929,6 +929,36 @@ class TestDashcam:
         """
         assert 'id="find-where"' in client.get("/dashcam").text
 
+    def test_location_is_required_by_default(self, client):
+        """A session that cannot produce coordinates cannot produce a report.
+
+        `_compose_dashcam_report` rejects a find with no lat/lng, so without this
+        the camera runs, the model bills, hazards get found, and every one of
+        them turns out to be unreportable at the moment somebody tries.
+        """
+        html = client.get("/dashcam").text
+        assert 'data-require-location="on"' in html
+
+    def test_but_it_can_be_turned_off(self, tmp_path):
+        """The boxes are worth watching on a machine with no GPS."""
+        from fastapi.testclient import TestClient
+
+        from road_cleaner.config import Settings
+        from road_cleaner.web.app import create_app
+
+        settings = Settings(
+            ROAD_CLEANER_MODE="local",
+            DRY_RUN=True,
+            DATA_DIR=str(tmp_path),
+            SQLITE_PATH=str(tmp_path / "t.db"),
+            BLOB_LOCAL_PATH=str(tmp_path / "frames"),
+            FILING_SANDBOX_INBOX=str(tmp_path / "outbox"),
+            LOG_LEVEL="ERROR",
+            DASHCAM_REQUIRE_LOCATION=False,
+        )
+        with TestClient(create_app(settings)) as client:
+            assert 'data-require-location="off"' in client.get("/dashcam").text
+
     def test_the_page_hands_the_script_its_pacing(self, client):
         """The quota knobs live in settings, and the script reads them from here.
 
