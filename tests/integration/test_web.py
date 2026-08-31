@@ -145,10 +145,18 @@ class TestPages:
         assert 'href="/drill"' in client.get("/").text
 
     def test_the_drill_page_says_it_cannot_file(self, client):
-        """The refusal is the point, so the page has to make it before the run."""
+        """The refusal is the point, so the page makes it before the run starts.
+
+        Asserted as the button's own state rather than as prose. The wording has
+        already moved once -- this test previously matched a sentence that lived
+        in a duplicate intro, and broke when that was removed -- but the Send
+        button being shipped `disabled` is the actual promise, and it is what a
+        visitor sees.
+        """
         body = client.get("/drill").text
-        assert "synthetic" in body.lower()
-        assert "cannot be pressed" in body or "not sent" in body
+        send = body[body.index('id="drill-send"') : body.index('id="drill-send"') + 120]
+        assert "disabled" in send, "the drill's Send button must ship disabled"
+        assert "not real" in body or "stops" in body, "the page must say why"
 
     def test_no_dark_section_inherits_a_paper_gap(self, client):
         """The stat band and the library are both dark, and adjacent.

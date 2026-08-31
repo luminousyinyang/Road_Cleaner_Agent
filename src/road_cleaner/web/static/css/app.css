@@ -46,7 +46,19 @@ a:hover { color: var(--rust); }
   font-size: 15px;
   letter-spacing: -0.01em;
 }
-.nav__links { display: flex; gap: 22px; font-size: 14px; }
+/* Wraps, because the number of links is not fixed. `.nav` itself wrapped from
+   the start but this row did not, so adding a fifth link pushed it past a 320px
+   viewport and took the whole page's horizontal scroll with it -- the row was
+   331px wide inside a 284px container. Four links happened to fit; that was the
+   only thing holding it together. */
+.nav__links {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 6px;
+  gap: 22px;
+  font-size: 14px;
+  min-width: 0;
+}
 .nav__links a { color: var(--muted); }
 .nav__links a.is-active { color: var(--ink); }
 /* The push to the right edge moved to `.nav__right`, which wraps this and the
@@ -1008,6 +1020,17 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
   .stage { grid-template-columns: 16px 1fr; }
   .stage__detail { grid-column: 2; }
   .draft__send { grid-template-columns: 1fr; }
+
+  /* The input already takes the full row, so the button wraps beneath it and
+     sat there at its content width -- a 95px button under a 354px field, which
+     reads as a layout that gave up rather than one that adapted. Full width is
+     also the easier tap target, which is the point on a phone. */
+  .drill__form { gap: 12px; }
+  .drill__input { flex: 1 1 100%; }
+  .drill__run, .drill__form .btn { width: 100%; }
+
+  /* Long enough to need the room, and it is a monospace list of examples. */
+  .drill__examples { font-size: 12px; line-height: 1.7; }
 }
 
 /* --- case page, after the trim ---------------------------------------- */

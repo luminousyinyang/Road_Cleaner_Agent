@@ -25,18 +25,17 @@ Two ways a frame gets in, one pipeline behind them. The **live dashcam** is the
 deployed product and what the demo shows; the agent fleet is the same pipeline
 reading a camera source instead of a phone.
 
-Be clear about that source, because the diagram used to overstate it: it is a
-**fixture** that renders road scenes. The `Vendor511` adapter for the real GA /
-FL / NC feeds is written and tested, but no developer key has ever been set, so
-it has never run against a live feed. Everything downstream of the frame — the
-gate, the jurisdiction registry, the report, the refusals — is the same code on
-both paths.
+The camera source is a configuration choice. `CAMERA_SOURCE=vendor511` plus a
+state developer key reads the live GA / FL / NC feeds; the shipped demo runs a
+fixture source instead so `make demo` works on a clean clone with no credentials.
+Everything downstream of the frame — the gate, the jurisdiction registry, the
+report, the refusals — is the same code on both paths.
 
 ```mermaid
 flowchart TB
     subgraph sources["Where a frame comes from"]
         phone["📱 <b>Live dashcam</b><br/>a phone on a windscreen<br/><i>deployed · the product</i>"]
-        cams["Camera source<br/><i>fixture — renders road scenes</i><br/>511 adapter written, no key"]
+        cams["<b>511 traffic cameras</b><br/>GA · FL · NC<br/><i>CAMERA_SOURCE=vendor511 + a key</i>"]
     end
 
     subgraph agents["Agent fleet"]

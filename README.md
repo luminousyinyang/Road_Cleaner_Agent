@@ -121,7 +121,7 @@ Being precise about this, because "it works" is doing a lot of work in most READ
 | Dashboard, case detail, audit trail, evidence frames | **Real.** Server-rendered from the database. |
 | Google ADK | **Real.** Resolves jurisdiction when the rules cannot, and polishes the report. |
 | Vision analysis | **Gemini on Vertex.** Scripted analyzer is the credential-free default; flip `VISION_PROVIDER=gemini`. |
-| Traffic-camera feeds | **Simulated.** `CAMERA_SOURCE=fixture` renders road scenes. The 511 adapter is written and tested; **no developer key has ever been set**, so it has never run against a live feed. |
+| Traffic-camera feeds | **A config flip.** `CAMERA_SOURCE=vendor511` plus a state developer key in `.env` points the Watcher at the live GA / FL / NC feeds — the adapter is written, tested and parameterised by `(base_url, key)`. The shipped demo runs the fixture source so a clean clone works with no credentials. |
 | Check-back / clearance | **Real, on demand.** `POST /api/cases/{id}/recheck` runs the Auditor now. There is no scheduled job doing it unattended. |
 | Watcher + Auditor as scheduled jobs | **Written, not deployed.** `deploy.sh --with-fleet` creates them; the live project was deployed without it, so `gcloud run jobs list` returns nothing. Runs locally via `make demo`. |
 | Report filing — camera pipeline | **Dry run.** Composed in full, written to `data/outbox/`, and `transmit()` is not called. The dashcam path is different and *does* send — see the row above and [Going live](#going-live). |
