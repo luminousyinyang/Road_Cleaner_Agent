@@ -232,32 +232,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-def _your_copy(composed: ComposedDashcamReport, agency) -> str:
-    """The report, with a note about what was and was not done with it.
-
-    The body itself is the same text an agency would receive -- forwarding it
-    should work, and it will not if the copy is a different document. The note
-    goes on top, because somebody opening this in their inbox needs to know
-    immediately whether the DOT already has it or whether that is still their
-    job.
-    """
-    where = agency.email or agency.endpoint
-    if where:
-        onward = (
-            f"This has not been sent to {agency.name}. They take reports at "
-            f"{where} -- forwarding the text below is enough."
-        )
-    else:
-        onward = (
-            f"{agency.name} owns that stretch, but publishes no reporting "
-            "address on file here."
-        )
-    return (
-        f"You reported this through Road Cleaner.\n\n{onward}\n\n"
-        f"{'-' * 60}\n\n{composed.body}"
-    )
-
-
 @dataclass(frozen=True)
 class ComposedDashcamReport:
     """A dashcam finding, located, attributed to an agency, and written up.
@@ -1254,6 +1228,13 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
             )
 
             # --- the copy that goes to whoever found it
+            #
+            # Byte-for-byte the document the agency gets. It used to carry a
+            # note on top saying the agency had *not* been sent it and the
+            # forwarding was still yours to do -- which stopped being true once
+            # the agency address cleared guard_live_send. A copy that opens by
+            # misdescribing what happened to it is worse than one that just
+            # says what was reported.
             address = user.mailable
             yours = Agency(
                 id="road-cleaner-you",
@@ -1266,7 +1247,7 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
             report = ComposedReport(
                 destination=address,
                 subject=composed.subject,
-                body=_your_copy(composed, agency),
+                body=composed.body,
                 inline_attachments=[("road-hazard.jpg", jpeg)],
             )
             try:

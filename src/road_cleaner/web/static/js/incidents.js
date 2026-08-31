@@ -151,11 +151,14 @@
     fact(facts, "Where", incident.location || "—");
     fact(facts, "When", incident.when);
     fact(facts, "Agency", incident.agency || "none resolved");
-    fact(facts, "Emailed to", mailLine(incident));
-    // No DOT row. It spent most of its life reading "not sent — reporting to
-    // agencies is off", which is a fact about this deployment's configuration
-    // rather than about the hazard in the picture, and it was the same on every
-    // card. `dot_state` is still on the API for anyone who wants it.
+    fact(facts, "Your copy", mailLine(incident));
+    // The DOT row is back. It was dropped when it read "not sent — reporting to
+    // agencies is off" on every single card, which described this deployment's
+    // configuration rather than the hazard in the picture. Now that an
+    // allowlisted agency address actually receives mail, the row carries the one
+    // thing the card exists to tell you: whether the people who own that road
+    // have it.
+    fact(facts, "Sent to agency", agencyMailLine(incident));
     article.appendChild(facts);
     // Below the facts, because it is the explanation for the two "not sent"
     // lines directly above it rather than a fact of its own.
@@ -183,6 +186,24 @@
     // server for it would be a plain untruth on the card.
     if (incident.dedup_reason) return "not sent — already reported";
     return "not sent — the mail server refused";
+  }
+
+  /* Where the agency's copy went, or why it did not go.
+
+     Four outcomes, and they are four different facts about the world. "Sent"
+     names the address, because the address is the whole point -- a card that
+     says only "sent" leaves you unable to check it went to the right desk.
+     "Refused" means guard_live_send turned it back, which is almost always an
+     address missing from LIVE_FILING_ALLOWLIST rather than a fault. */
+  function agencyMailLine(incident) {
+    if (incident.dot_state === "sent") {
+      return incident.dot_destination || incident.agency_email || "sent";
+    }
+    if (incident.dot_state === "duplicate") return "not sent — already reported";
+    if (incident.dot_state === "refused") {
+      return `not sent — ${incident.dot_error || "the send was refused"}`;
+    }
+    return "not sent — agency reporting is off";
   }
 
   /* Fetch the still with the bearer token and put it in the tag.

@@ -109,6 +109,19 @@
   // the page copy cannot disagree with each other.
   const HOLD_MS = (Number(root.dataset.reportWindow) || 15) * 1000;
 
+  /* How long the page stays quiet after a find has been dealt with.
+
+     Dismissing a find used to put the very next frame straight back at the
+     model, and the car has moved perhaps thirty metres in that time -- so the
+     same pothole, from almost the same angle, popped the dialog again before
+     the driver had finished looking up. The window is not about quota. It is
+     about the road having a chance to change before anything else is allowed
+     to interrupt.
+
+     Not server-supplied, unlike HOLD_MS: nothing in the page copy quotes this
+     number, so there is no second place for it to disagree with. */
+  const COOLDOWN_MS = 15000;
+
   // Wide enough for the model to see a tyre tread a hundred metres off, small
   // enough that the upload is a fraction of a second on a phone. Box coordinates
   // come back as fractions, so shrinking the wire image costs nothing on screen.
@@ -131,6 +144,7 @@
   let here = null;       // {lat, lng, accuracy} once the browser tells us
   let watch = null;      // the watchPosition id, while one is running
   let hold = null;       // the countdown on an unreported find, if one is up
+  let quietUntil = 0;    // nothing may interrupt before this, see COOLDOWN_MS
   const pending = new Set();  // AbortControllers for the looks still out
 
   toggle.addEventListener("click", () => (stream ? stop("Stopped.") : start()));
@@ -192,6 +206,9 @@
     // from the last one goes.
     clearHold();
     found = null;
+    // A quiet window left over from the last session would otherwise sit out the
+    // first fifteen seconds of this one, with the status line saying so.
+    quietUntil = 0;
     reportButton.hidden = true;
     if (shareButton) shareButton.hidden = true;
 
@@ -263,6 +280,15 @@
     // timer, so this closes the window where a pump tick could start one more
     // look at the very moment something was found.
     if (found) return;
+    // The quiet window after a find. Held here rather than by not scheduling the
+    // pump at all, so the interval keeps ticking and looking picks itself back up
+    // the moment the window closes -- no second timer to start, and none to leak
+    // if the camera is stopped midway through.
+    if (Date.now() < quietUntil) return;
+    if (quietUntil) {
+      quietUntil = 0;
+      status.textContent = "Looking…";
+    }
     if (inFlight >= MAX_IN_FLIGHT) return;
     if (Date.now() - lastLaunch < MIN_GAP_MS) return;
 
@@ -633,14 +659,22 @@
     pending.clear();
   }
 
+  /* How many looks this session has spent, and nothing else.
+
+     `inFlight` used to sit here too. It is the truest number on the page and the
+     least use to anybody holding a phone at a pothole: it ticks between one and
+     MAX_IN_FLIGHT several times a second, so the counter never settles, and what
+     it reports is the shape of the request pipeline rather than anything about
+     the road. Looks is the number that answers "is this thing working" -- it
+     only ever goes up. `inFlight` stays load-bearing in `pump`; it is only
+     unpublished. */
   function paintCounter() {
-    const waiting = inFlight > 0 ? ` · ${inFlight} in flight` : "";
     // Skips belong here, as a tally, not on the status line. They are ordinary
     // -- the model has a long tail and several looks are always in the air -- and
     // a sentence that replaces "Looking…" every few seconds reads as a broken
     // page rather than as one frame of many going unanswered.
     const slow = skipped > 0 ? ` · ${skipped} slow` : "";
-    counter.textContent = `${looks} look${looks === 1 ? "" : "s"}${waiting}${slow}`;
+    counter.textContent = `${looks} look${looks === 1 ? "" : "s"}${slow}`;
   }
 
   function capture() {
@@ -666,12 +700,22 @@
   }
 
   function show(result, jpeg) {
+    // Inside the quiet window the answer is thrown away whole, found or not, and
+    // before it can write anything. `pump` has already stopped starting looks,
+    // so the only answers that reach here are ones that were in the air when the
+    // last find was dealt with -- pictures of the same stretch of road, which is
+    // exactly what the window exists to stop being asked about twice. Dropping
+    // them silently also keeps the status line saying what it was told to say
+    // rather than flickering between "holding" and "nothing in that frame".
+    if (Date.now() < quietUntil) return;
+
     if (!result.found) {
       clearBox();
       said.textContent = "Nothing worth reporting in that frame.";
       said.hidden = false;
       return;
     }
+
     drawBox(result);
     said.textContent = `${result.hazard_label} · ${result.confidence.toFixed(2)} — ${result.description}`;
     said.hidden = false;
@@ -727,7 +771,7 @@
         reportButton.hidden = true;
         if (shareButton) shareButton.hidden = true;
         clearBox();
-        said.textContent = "Let that one go. Still looking.";
+        said.textContent = "Let that one go.";
         resumeLooking();
         return;
       }
@@ -875,14 +919,21 @@
   /* Start looking again after a find is dealt with.
      `message` replaces the default status line, so a confirmation worth reading
      -- "sent to you@example.com" -- is not wiped out by "Looking…" a
-     millisecond after it appears. */
+     millisecond after it appears.
+
+     Every path that finishes with a find comes through here -- the countdown
+     expiring, "let it go", and a successful save -- which is why the quiet
+     window is armed here and nowhere else. A share is the exception and does
+     not call this: it re-arms the same find with `beginHold`, so there is
+     nothing yet to be quiet about. */
   function resumeLooking(message) {
     // Only if the camera is still on. A hold that expires after somebody hit
     // Stop must not quietly start the loop up again.
     if (!stream || timer) return;
-    status.textContent = message || "Looking…";
-    // Straight back to looking rather than sitting out a gap first: the pause
-    // was somebody reading a find, and the quota was not being spent during it.
+    quietUntil = Date.now() + COOLDOWN_MS;
+    status.textContent = message || "Holding a moment before looking again.";
+    // The pump is scheduled straight away even though it will not spend a look
+    // until the window closes. It is the thing that notices the window closing.
     lastLaunch = 0;
     timer = setInterval(pump, PUMP_MS);
     pump();
@@ -957,7 +1008,7 @@
     reportButton.hidden = true;
     if (shareButton) shareButton.hidden = true;
     clearBox();
-    said.textContent = "Let that one go. Still looking.";
+    said.textContent = "Let that one go.";
     resumeLooking();
   }
 
@@ -1050,7 +1101,15 @@
           `${saved.dedup_window_hours}h, so it is already in hand and ` +
           "nothing was sent again.";
       } else if (saved.emailed_to) {
-        note = `Saved, and sent to ${saved.emailed_to}.`;
+        // Who actually has it is the point of pressing the button, and the
+        // agency is the half that matters -- a copy in your own inbox is a
+        // receipt, not a report. Named only when it really went, so this line
+        // can never claim a send that guard_live_send turned back.
+        note =
+          saved.dot_state === "sent"
+            ? `Saved, and sent to ${saved.agency || "the agency"}. ` +
+              `Your copy is with ${saved.emailed_to}.`
+            : `Saved, and sent to ${saved.emailed_to}.`;
       } else {
         note = "Saved. The mail could not be sent — it is on your incidents page.";
       }
