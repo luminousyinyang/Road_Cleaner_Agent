@@ -62,14 +62,20 @@
 
     let response;
     try {
+      // `full` is what makes the drill worth watching: it renders the clip with
+      // Veo and then pulls the stills the model analyses out of *that*, instead
+      // of leaving Gemini to read the flat scene renders. It was never sent, so
+      // every run through this page took the degraded path.
+      const video = document.getElementById("drill-video");
+      const payload = { prompt: input.value, full: Boolean(video && video.checked) };
+      if (picked) {
+        payload.lat = picked.lat;
+        payload.lng = picked.lng;
+      }
       response = await fetch("/api/drill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          picked
-            ? { prompt: input.value, lat: picked.lat, lng: picked.lng }
-            : { prompt: input.value }
-        ),
+        body: JSON.stringify(payload),
       });
     } catch (err) {
       return fail("Could not reach the server.");

@@ -26,6 +26,34 @@
     <button class="btn btn--syn" id="drill-run" type="submit">Run the drill</button>
   </form>
 
+  {# Real footage, or flat renders.
+
+     This is the difference between a drill worth watching and one that is only
+     technically correct. With Veo on, the clip is generated first and the
+     stills the model analyses are pulled out of it -- so the detection, the
+     boxes and the frames a report would enclose are all against real-looking
+     road. With it off, the pipeline still runs end to end, but Gemini is
+     reading two flat-shaded rectangles and the evidence looks like it.
+
+     On by default when the provider allows it, because that is the honest
+     demonstration; the cost is stated rather than hidden, since it bills per
+     second of video. #}
+  <label class="drill__opt">
+    <input type="checkbox" id="drill-video"
+           {% if video_enabled %}checked{% else %}disabled{% endif %}>
+    <span>
+      Generate the footage with Veo
+      {% if video_enabled %}
+      <em class="drill__opt-note">bills per second of video · adds ~2 min</em>
+      {% else %}
+      <em class="drill__opt-note">
+        needs <code>MEDIA_PROVIDER=vertex</code> — without it the run uses flat
+        scene renders and the model analyses those
+      </em>
+      {% endif %}
+    </span>
+  </label>
+
   {# Where it happens. Click the map and the drill uses that coordinate rather
      than inventing a location — which also means the jurisdiction lookup is
      doing real work, on a state nobody seeded, instead of choosing between

@@ -487,6 +487,7 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         different product standing in the middle of it -- which is why it was
         taken off there twice. The objection was to the mixing, not to the drill.
         """
+        c = request.app.state.container
         return TEMPLATES.TemplateResponse(
             request,
             "drill.html",
@@ -494,6 +495,13 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
                 "active": "drill",
                 "stages": DRILL_STAGES,
                 "examples": DRILL_EXAMPLES,
+                # Whether the run can render real footage. Without Veo the drill
+                # falls back to flat scene renders, and the model then analyses
+                # coloured rectangles -- which technically exercises the whole
+                # pipeline and shows nothing anybody wants to look at. The page
+                # says which of the two it is about to do rather than leaving it
+                # to be inferred from the output.
+                "video_enabled": c.settings.media_provider == MediaProviderKind.VERTEX,
             },
         )
 

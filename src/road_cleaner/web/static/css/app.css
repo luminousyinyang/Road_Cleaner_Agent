@@ -915,6 +915,28 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
   background: var(--card); border: 1px solid var(--rule-2); border-radius: 3px;
 }
 .drill__input:focus { outline: 2px solid var(--forest); outline-offset: -1px; }
+/* The Veo toggle. On by default where the provider allows it, because a drill
+   reading flat rectangles demonstrates the plumbing and nothing else. */
+.drill__opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.drill__opt input { margin-top: 3px; flex: 0 0 auto; }
+.drill__opt input:disabled { cursor: not-allowed; }
+.drill__opt input:disabled + span { color: var(--muted); cursor: not-allowed; }
+.drill__opt-note {
+  display: block;
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
 .drill__examples {
   margin: 10px 0 0; font-family: var(--mono);
   font-size: 10.5px; color: var(--muted);
