@@ -10,8 +10,8 @@ channel, and then actually checking whether anybody came. Waze crowdsources sigh
 reports to nobody. Everybody with a dashcam drives straight past. No system closes the
 loop.
 
-Road Cleaner closes the loop. Nobody talks to it. It runs continuously, and its output is
-*filed reports with case numbers* and a resolution audit trail.
+Road Cleaner closes the loop. Nobody talks to it. It runs on a loop rather than on a
+prompt, and its output is *filed reports with case numbers* and a resolution audit trail.
 
 And having found a hazard, it can do one more thing with it. An autonomous driving stack
 sees a million miles of ordinary road and almost no shed truck tyres — rare events are
@@ -128,7 +128,7 @@ external dependency sits behind a port with two implementations.
 
 ## How it works
 
-Seven stages, per camera, continuously:
+Seven stages, per camera, on a loop:
 
 ```
 WATCH → DETECT → CONFIRM → RESOLVE → REPORT → CHECK BACK → PUSH
@@ -294,10 +294,22 @@ ones is a separate, conscious step.
 make deploy PROJECT=your-gcp-project
 ```
 
-Creates Firestore, a GCS bucket with a 7-day frame lifecycle, Pub/Sub topics with a
-dead-letter queue, Secret Manager entries, one Cloud Run service (dashboard) and two Cloud
-Run jobs (Watcher every 5 min, Auditor hourly). Idempotent; safe to re-run. `DRY_RUN` stays
-on.
+Bare, that deploys **one Cloud Run service** — the dashboard, the drill and the live
+dashcam. Idempotent; safe to re-run. `DRY_RUN` stays on.
+
+The rest is behind two flags, and neither is on by default:
+
+```bash
+./deploy/deploy.sh PROJECT --with-firestore   # Firestore + GCS + their indexes
+./deploy/deploy.sh PROJECT --with-fleet       # Watcher (5 min) + Auditor (hourly) jobs,
+                                              # Pub/Sub topics, Cloud Scheduler
+```
+
+**Without `--with-fleet` there is no fleet in the cloud** — no Cloud Run jobs, no
+schedules, nothing polling. The dashboard still serves everything you can drive by
+hand, and the fleet still runs end to end locally via `make demo` and `make run`.
+Worth stating outright, because "an agent fleet running continuously" is checkable
+with one `gcloud run jobs list`.
 
 ```bash
 make teardown PROJECT=your-gcp-project   # turn it all off again
