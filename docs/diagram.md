@@ -21,17 +21,29 @@ make diagrams        # docs/diagram.md -> docs/img/*.png
 
 ## The system
 
+Two ways a frame gets in, one pipeline behind them. The **live dashcam** is the
+deployed product and what the demo shows; the agent fleet is the same pipeline
+reading a camera source instead of a phone.
+
+Be clear about that source, because the diagram used to overstate it: it is a
+**fixture** that renders road scenes. The `Vendor511` adapter for the real GA /
+FL / NC feeds is written and tested, but no developer key has ever been set, so
+it has never run against a live feed. Everything downstream of the frame — the
+gate, the jurisdiction registry, the report, the refusals — is the same code on
+both paths.
+
 ```mermaid
 flowchart TB
-    subgraph sources["Public data"]
-        cams["511 traffic cameras<br/>GA · FL · NC<br/><i>snapshot + incident feeds</i>"]
+    subgraph sources["Where a frame comes from"]
+        phone["📱 <b>Live dashcam</b><br/>a phone on a windscreen<br/><i>deployed · the product</i>"]
+        cams["Camera source<br/><i>fixture — renders road scenes</i><br/>511 adapter written, no key"]
     end
 
-    subgraph agents["Agent fleet — Cloud Run"]
+    subgraph agents["Agent fleet"]
         watcher["<b>Watcher</b><br/>polls on tiers<br/>skips identical frames"]
         analyst["<b>Analyst</b><br/>prefilter → vision → gate"]
         dispatcher["<b>Dispatcher</b><br/>jurisdiction → compose → file"]
-        auditor["<b>Auditor</b><br/>re-checks until clear<br/>escalates twice, then stops"]
+        auditor["<b>Auditor</b><br/>re-checks a case<br/>escalates twice, then stops"]
     end
 
     subgraph models["Google AI"]
@@ -45,35 +57,47 @@ flowchart TB
         g["1 · floor 0.55<br/>2 · two frames, 90s–30min apart<br/>3 · not already in the state feed<br/>4 · severity × confidence"]
     end
 
+    dedup["<b>24h duplicate check</b><br/>same hazard, within 500m,<br/><i>across every user</i>"]
+    jur["<b>Jurisdiction registry</b><br/>69 agencies · rules first"]
+
     subgraph state["State"]
         repo[("Firestore / SQLite<br/>cases · detections · trail")]
+        incidents[("Incident store<br/><i>scoped by uid</i>")]
         blobs[("Cloud Storage / disk<br/>evidence frames")]
         media[("media store<br/><i>generated — kept apart</i>")]
     end
 
-    agencies["State DOT desks<br/>Open311 · form · email"]
+    agencies["Agency desks<br/>Open311 · form · email"]
 
+    %% the dashcam path — see 02-dashcam for its refusals in full
+    phone --> gemini
+    phone -->|"only what you press the button on"| dedup
+    dedup -->|"already reported — kept, not sent"| incidents
+    dedup -->|first report| jur
+
+    %% the camera path
     cams --> watcher --> analyst
-    analyst -.->|frame| gemini
+    analyst --> gemini
     analyst --> gate
-    gate -->|file| dispatcher
     gate -->|watch / suppress| repo
-    dispatcher -.->|whose road?| adk
-    dispatcher -->|DRY_RUN=true<br/>composed, not sent| agencies
-    dispatcher --> auditor
-    auditor -.->|still there?| gemini
-    auditor --> repo
+    gate -->|file| dispatcher --> jur
+    dispatcher --> auditor --> repo
 
+    %% shared from here down
+    jur -.->|"only when the rules cannot decide"| adk
+    jur --> agencies
+    jur --> incidents
     watcher --> blobs
-    dispatcher --> repo
     repo --> veo --> media
 
     classDef google fill:#1D4E6B,stroke:#0E1116,color:#EAF3F9
     classDef store fill:#F2F5F8,stroke:#94A5B4,color:#1A1A18
     classDef guard fill:#FBEDE7,stroke:#B4451F,color:#1A1A18
+    classDef live fill:#1F5C3D,stroke:#0E1116,color:#EAF3F9
     class gemma,gemini,adk,veo google
-    class repo,blobs,media store
-    class g guard
+    class repo,blobs,media,incidents store
+    class g,dedup,noloc guard
+    class phone live
 ```
 
 ## The second way in — a phone on a windscreen
