@@ -78,11 +78,24 @@ for role in ${ROLES}; do
 done
 echo "  roles bound: ${ROLES}"
 
-ENV_VARS="DRY_RUN=true,GOOGLE_CLOUD_PROJECT=${PROJECT}"
+# Cloud Run's --set-env-vars splits on a delimiter, and the default is a
+# comma -- which LIVE_FILING_ALLOWLIST legitimately contains, because it is
+# itself a comma-separated list of addresses. gcloud then read the second
+# address as a malformed key and refused the whole deploy:
+#
+#   ERROR: argument --set-env-vars: Bad syntax for dict arg:
+#          [O&MSupport@bellevuewa.gov]
+#
+# So the delimiter is declared explicitly with gcloud's `^SEP^` prefix. A pipe
+# cannot appear in any value here -- these are project ids, regions, booleans,
+# addresses and URLs -- and the one genuine secret, SMTP_PASSWORD, never comes
+# this way at all: it is mounted from Secret Manager.
+ENV_SEP='|'
+ENV_VARS="DRY_RUN=true${ENV_SEP}GOOGLE_CLOUD_PROJECT=${PROJECT}"
 # Gemini is served from `global`; Veo and Lyria only from a pinned region.
-ENV_VARS="${ENV_VARS},GOOGLE_CLOUD_LOCATION=global,VERTEX_MEDIA_LOCATION=${REGION}"
+ENV_VARS="${ENV_VARS}${ENV_SEP}GOOGLE_CLOUD_LOCATION=global${ENV_SEP}VERTEX_MEDIA_LOCATION=${REGION}"
 # The whole point of deploying is to show the real models working.
-ENV_VARS="${ENV_VARS},VISION_PROVIDER=gemini,USE_ADK=true,MEDIA_PROVIDER=vertex"
+ENV_VARS="${ENV_VARS}${ENV_SEP}VISION_PROVIDER=gemini${ENV_SEP}USE_ADK=true${ENV_SEP}MEDIA_PROVIDER=vertex"
 
 # --- the live demonstration send -------------------------------------------
 #
@@ -129,12 +142,12 @@ fi
 if [[ -n "${FIREBASE_PROJECT_ID:-}" && -n "${FIREBASE_API_KEY:-}" \
    && -n "${FIREBASE_AUTH_DOMAIN:-}" && -n "${FIREBASE_APP_ID:-}" ]]; then
   say "Accounts"
-  ENV_VARS="${ENV_VARS},FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
-  ENV_VARS="${ENV_VARS},FIREBASE_API_KEY=${FIREBASE_API_KEY}"
-  ENV_VARS="${ENV_VARS},FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}"
-  ENV_VARS="${ENV_VARS},FIREBASE_APP_ID=${FIREBASE_APP_ID}"
-  ENV_VARS="${ENV_VARS},DASHCAM_NOTIFY_DOT=${DASHCAM_NOTIFY_DOT:-false}"
-  ENV_VARS="${ENV_VARS},DASHCAM_REPORT_WINDOW_SECONDS=${DASHCAM_REPORT_WINDOW_SECONDS:-15}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}FIREBASE_API_KEY=${FIREBASE_API_KEY}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}FIREBASE_APP_ID=${FIREBASE_APP_ID}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}DASHCAM_NOTIFY_DOT=${DASHCAM_NOTIFY_DOT:-false}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}DASHCAM_REPORT_WINDOW_SECONDS=${DASHCAM_REPORT_WINDOW_SECONDS:-15}"
   echo "  sign-in: Google, project ${FIREBASE_PROJECT_ID}"
   # Saved incidents are Firestore documents and their stills are GCS objects, so
   # both roles are needed whether or not --with-firestore/--with-fleet was asked
@@ -157,9 +170,9 @@ fi
 
 if [[ -n "${DEMO_SEND_TO:-}" && -n "${LIVE_FILING_ALLOWLIST:-}" && -n "${SMTP_HOST:-}" ]]; then
   say "Live demonstration send"
-  ENV_VARS="${ENV_VARS},DEMO_SEND_TO=${DEMO_SEND_TO},LIVE_FILING_ALLOWLIST=${LIVE_FILING_ALLOWLIST}"
-  ENV_VARS="${ENV_VARS},SMTP_HOST=${SMTP_HOST},SMTP_PORT=${SMTP_PORT:-587}"
-  ENV_VARS="${ENV_VARS},SMTP_USER=${SMTP_USER:-},FILING_FROM_ADDRESS=${FILING_FROM_ADDRESS:-${SMTP_USER:-}}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}DEMO_SEND_TO=${DEMO_SEND_TO}${ENV_SEP}LIVE_FILING_ALLOWLIST=${LIVE_FILING_ALLOWLIST}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}SMTP_HOST=${SMTP_HOST}${ENV_SEP}SMTP_PORT=${SMTP_PORT:-587}"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}SMTP_USER=${SMTP_USER:-}${ENV_SEP}FILING_FROM_ADDRESS=${FILING_FROM_ADDRESS:-${SMTP_USER:-}}"
 
   if [[ -n "${SMTP_PASSWORD:-}" ]]; then
     # Only enabled by --with-fleet otherwise, and this path needs it whether or
@@ -206,12 +219,12 @@ if [[ ${WITH_FIRESTORE} -eq 1 ]]; then
     --index=order=ascending,query-scope=COLLECTION_GROUP \
     --index=order=descending,query-scope=COLLECTION_GROUP 2>/dev/null || true
   echo "  indexes requested (they build asynchronously — check the console)"
-  ENV_VARS="${ENV_VARS},ROAD_CLEANER_MODE=cloud,REPOSITORY=firestore,BLOB_STORE=local,EVENT_BUS=memory"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}ROAD_CLEANER_MODE=cloud${ENV_SEP}REPOSITORY=firestore${ENV_SEP}BLOB_STORE=local${ENV_SEP}EVENT_BUS=memory"
 else
   # SQLite and the frames ship inside the image. Read-mostly and perfectly
   # adequate for a dashboard; writes do not survive a cold start, which is fine
   # because the deployed instance is a demo surface, not the system of record.
-  ENV_VARS="${ENV_VARS},ROAD_CLEANER_MODE=local"
+  ENV_VARS="${ENV_VARS}${ENV_SEP}ROAD_CLEANER_MODE=local"
 fi
 
 say "Building and deploying the dashboard"
@@ -240,7 +253,7 @@ gcloud run deploy road-cleaner-dashboard \
   --source . \
   --region="${REGION}" \
   --service-account="${SERVICE_ACCOUNT}" \
-  --set-env-vars="${ENV_VARS}" \
+  --set-env-vars="^${ENV_SEP}^${ENV_VARS}" \
   ${SMTP_SECRET} \
   --allow-unauthenticated \
   --min-instances=1 \
@@ -291,7 +304,7 @@ EOF
       --image="${IMAGE}" \
       --region="${REGION}" \
       --service-account="${SERVICE_ACCOUNT}" \
-      --set-env-vars="${ENV_VARS}" \
+      --set-env-vars="^${ENV_SEP}^${ENV_VARS}" \
       --command="road-cleaner" --args="${args}" \
       --max-retries=1 --task-timeout="${timeout}" --memory=1Gi
   done

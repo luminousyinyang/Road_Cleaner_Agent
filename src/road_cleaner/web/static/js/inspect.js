@@ -152,7 +152,19 @@
       misses = 0;
       const job = await response.json();
 
-      if (job.result) paint(job.result);
+      // Painting must not be able to abandon the run. It is the presentation
+      // half and the job is the real work; a bug in the former used to unwind
+      // this loop and leave the page claiming "Stopped." while the server
+      // carried on to completion, which is the most misleading pair of states
+      // this page can be in. Logged rather than swallowed, so it still shows up
+      // in the console for whoever has to fix it.
+      if (job.result) {
+        try {
+          paint(job.result);
+        } catch (err) {
+          console.error("Could not paint the run result:", err);
+        }
+      }
       if (job.state === "failed") {
         fail(job.error || "The analysis failed.");
         return;
@@ -174,11 +186,20 @@
     paintReport(result);
     paintEvidence(result);
 
-    if (result.from_cache && result.cache_note) {
-      note.textContent = result.cache_note;
-      note.hidden = false;
-    } else {
-      note.hidden = true;
+    // Absent in `auto` mode, where the note is a fixed sentence explaining that
+    // the report goes to your inbox rather than the agency -- that copy has no
+    // id and must not be replaced by a cache note or hidden. Unguarded, this
+    // threw on the first painted result, and because `paint` is called from
+    // inside `poll`, the throw unwound the polling loop: the page said
+    // "Stopped." and reset the button while the job carried on running server
+    // side. A missing optional element should never be able to do that.
+    if (note) {
+      if (result.from_cache && result.cache_note) {
+        note.textContent = result.cache_note;
+        note.hidden = false;
+      } else {
+        note.hidden = true;
+      }
     }
   }
 
