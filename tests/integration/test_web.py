@@ -118,10 +118,37 @@ class TestPages:
         They were briefly restored here and are deliberately gone again: the
         front door demonstrates the *cases*, and a text box that invents a
         hazard is a different product from a library of real ones.
+
+        The drill now has `/drill` of its own — see the tests below. That keeps
+        the separation this test protects while leaving the drill reachable.
         """
         body = client.get("/").text
         assert "drill-form" not in body
         assert "demo-form" not in body
+
+    def test_the_drill_has_a_page_of_its_own(self, client):
+        """Reachable, or the four-agent pipeline can only be taken on trust.
+
+        Every other view shows a hazard the fleet already found. This is the
+        only one that runs all four agents in front of you on demand, which
+        makes it the thing to point at when somebody asks whether the
+        architecture is real.
+        """
+        r = client.get("/drill")
+        assert r.status_code == 200
+        assert "drill-form" in r.text
+        assert "drill-stages" in r.text
+        assert "drill.js" in r.text, "the console is inert without its script"
+
+    def test_the_drill_is_in_the_nav(self, client):
+        """A page nobody can find is a page nobody demos."""
+        assert 'href="/drill"' in client.get("/").text
+
+    def test_the_drill_page_says_it_cannot_file(self, client):
+        """The refusal is the point, so the page has to make it before the run."""
+        body = client.get("/drill").text
+        assert "synthetic" in body.lower()
+        assert "cannot be pressed" in body or "not sent" in body
 
     def test_no_dark_section_inherits_a_paper_gap(self, client):
         """The stat band and the library are both dark, and adjacent.

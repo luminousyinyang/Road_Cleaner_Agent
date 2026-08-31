@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from road_cleaner.adapters.camera.scene import SceneSpec, phash, render
+from road_cleaner.adapters.retry import with_retry
 from road_cleaner.domain import narrative
 from road_cleaner.domain.enums import CaseKind, HazardType, Severity, Stage, Tone
 from road_cleaner.domain.gating import evaluate
@@ -229,12 +230,26 @@ class Drill:
         return self._genai_client
 
     async def _scaffold(self, text: str) -> dict[str, Any]:
+        """Turn one sentence into a structured hazard spec, with Gemma.
+
+        Retried like every other model call in this system. It was not, and it
+        was the only one: a single `429 RESOURCE_EXHAUSTED` -- which Vertex
+        returns readily when its request queue is busy -- killed the whole drill
+        at the first stage, before any of the work worth watching had started.
+        A drill is something a person presses and waits on, so the one model
+        call standing in front of the other five stages is the last one that
+        should give up immediately.
+        """
         client = self._client()
-        try:
-            response = await client.aio.models.generate_content(
+
+        async def call():
+            return await client.aio.models.generate_content(
                 model=self.scaffold_model,
                 contents=_SCAFFOLD_PROMPT.format(text=text.strip()),
             )
+
+        try:
+            response = await with_retry(call, attempts=4)
         except Exception as exc:  # noqa: BLE001
             raise DrillError(f"Scaffolding failed: {exc}") from exc
 

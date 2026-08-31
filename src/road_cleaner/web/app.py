@@ -478,6 +478,25 @@ def _register_routes(app: FastAPI) -> None:  # noqa: C901 - a flat route table r
         )
 
     # ----------------------------------------------------------- dashcam
+    @app.get("/drill", response_class=HTMLResponse)
+    async def drill_page(request: Request):
+        """Run the four agents on a hazard you describe, and watch them work.
+
+        On its own page rather than on the front door. That page is a library of
+        hazards the fleet actually found, and a box that invents one is a
+        different product standing in the middle of it -- which is why it was
+        taken off there twice. The objection was to the mixing, not to the drill.
+        """
+        return TEMPLATES.TemplateResponse(
+            request,
+            "drill.html",
+            {
+                "active": "drill",
+                "stages": DRILL_STAGES,
+                "examples": DRILL_EXAMPLES,
+            },
+        )
+
     @app.get("/dashcam", response_class=HTMLResponse)
     async def dashcam(request: Request):
         """The same agent, pointed at a real road through a phone."""

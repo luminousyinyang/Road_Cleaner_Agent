@@ -1,17 +1,21 @@
 # Road Cleaner
 
-**An autonomous agent fleet that reads road footage — a dashcam pass, or a public DOT
-camera — spots the hazards nobody has reported, figures out which agency owns that stretch
-of road, files the report, and keeps checking until it's actually fixed.**
+**Point your phone at the road and drive. Road Cleaner spots the hazard, works out which
+of 69 agencies owns that stretch, and files the report on the channel that agency actually
+accepts.**
 
-Detection is the easy part. Plenty of things can spot debris on a road. The hard part is
-everything after seeing it — working out whose road it is, saying so through the right
-channel, and then actually checking whether anybody came. Waze crowdsources sightings and
-reports to nobody. Everybody with a dashcam drives straight past. No system closes the
-loop.
+Detection is the easy part. Plenty of things can spot a pothole. The hard part is
+everything after seeing it — working out whose road it is (Bellevue maintains its own
+streets; the state DOT owns only the routes running through them), saying so through the
+channel that agency accepts, and doing it without pulling over to fill in a form from
+memory an hour later. So nobody does. Waze crowdsources sightings and reports them to
+nobody.
 
-Road Cleaner closes the loop. Nobody talks to it. It runs on a loop rather than on a
-prompt, and its output is *filed reports with case numbers* and a resolution audit trail.
+Road Cleaner removes the whole tax. Nobody talks to it — it runs on a loop rather than on
+a prompt, and its output is *filed reports* with a copy in your inbox as the receipt.
+
+The same four-agent pipeline also reads traffic-camera feeds without a driver, and you can
+watch all four run on a hazard you describe at [`/drill`](#the-drill--watch-the-four-agents-work).
 
 And having found a hazard, it can do one more thing with it. An autonomous driving stack
 sees a million miles of ordinary road and almost no shed truck tyres — rare events are
@@ -97,7 +101,7 @@ Other useful commands:
 
 ```bash
 make doctor    # which adapter is wired to each port, and what's missing to go live
-make test      # the whole suite — 882 tests, still no credentials
+make test      # the whole suite — 900+ tests, still no credentials
 make outbox    # the reports that would have been sent
 make clean     # delete all generated data
 ```
@@ -110,16 +114,20 @@ Being precise about this, because "it works" is doing a lot of work in most READ
 
 | | Status |
 |---|---|
-| Four-agent pipeline, seven-stage loop | **Real.** Runs end to end. |
+| **Live dashcam** | **Real, deployed, and the product.** A phone, Gemini on every frame, a report to the agency that owns that road. |
+| **Reporting to a real agency** | **Real.** Bellevue's published 24-hour maintenance desk, behind two switches — see [Going live](#going-live). |
+| Four-agent pipeline, seven-stage loop | **Real.** Runs end to end; ~140 tests. Watch it at [`/drill`](#the-drill--watch-the-four-agents-work). |
 | Confidence gate, SLA, escalation, jurisdiction rules | **Real.** Pure logic, exhaustively tested. |
 | Dashboard, case detail, audit trail, evidence frames | **Real.** Server-rendered from the database. |
-| Camera feeds | **Simulated.** All three state APIs need a developer key (see below). |
-| Vision analysis | **Scripted by default, Gemini verified.** `gemini-3.7-flash` on Vertex answers live; flip `VISION_PROVIDER=gemini`. |
+| Google ADK | **Real.** Resolves jurisdiction when the rules cannot, and polishes the report. |
+| Vision analysis | **Gemini on Vertex.** Scripted analyzer is the credential-free default; flip `VISION_PROVIDER=gemini`. |
+| Traffic-camera feeds | **Simulated.** `CAMERA_SOURCE=fixture` renders road scenes. The 511 adapter is written and tested; **no developer key has ever been set**, so it has never run against a live feed. |
+| Check-back / clearance | **Real, on demand.** `POST /api/cases/{id}/recheck` runs the Auditor now. There is no scheduled job doing it unattended. |
+| Watcher + Auditor as scheduled jobs | **Written, not deployed.** `deploy.sh --with-fleet` creates them; the live project was deployed without it, so `gcloud run jobs list` returns nothing. Runs locally via `make demo`. |
+| Report filing — camera pipeline | **Dry run.** Composed in full, written to `data/outbox/`, and `transmit()` is not called. The dashcam path is different and *does* send — see the row above and [Going live](#going-live). |
 | Simulation (Veo / Chirp / Lyria) | **Real, and off by default.** Generated clips are in `data/media/`. Costs money per second of video. |
-| Report filing | **Dry run.** Composed in full, written to disk, never transmitted. |
-| Cloud Run | **Deployed and verified.** `./deploy/deploy.sh PROJECT` builds and ships it; a drill has been run against the live URL. |
-| Google ADK | **Real.** Resolves jurisdiction when the rules cannot — which is exactly what a drill's invented location forces. |
-| Firestore / GCS / Pub/Sub | **Written; Firestore is one flag away** (`--with-firestore`). Pub/Sub has no consumer yet — see architecture. |
+| Cloud Run + Firebase Auth | **Deployed and verified.** |
+| Firestore / GCS / Pub/Sub | **Written, not enabled on the deployed revision**, which runs SQLite, local disk and an in-process bus. `--with-firestore` flips the first two. Pub/Sub has no consumer yet. |
 
 The whole design exists to make that gap an env-var flip rather than a rewrite. Every
 external dependency sits behind a port with two implementations.
@@ -364,11 +372,16 @@ Things worth knowing that only showed up in the building:
 
 ---
 
-## The drill — watch it work on any hazard you can describe
+## The drill — watch the four agents work
 
 You should not have to wait for a real mattress to fall off a real truck to see
-whether an agent works. Type a hazard into the console on the home page and the
-fleet runs the whole thing against it:
+whether an agent works. Go to **[`/drill`](#the-drill--watch-the-four-agents-work)**,
+describe a hazard, and the fleet runs the whole thing against it in about twenty
+seconds.
+
+It has a page of its own rather than a slot on the front door, deliberately: that
+page is a library of hazards the fleet actually found, and a box that invents one
+is a different product standing in the middle of it.
 
 | Stage | What actually runs | Model |
 |---|---|---|
@@ -383,6 +396,7 @@ fleet runs the whole thing against it:
 About 18 seconds locally, under a minute on Cloud Run.
 
 **What is invented:** the location, the camera, the imagery.
+
 **What is real:** both vision calls, the gate's arithmetic, the agency lookup,
 the report text, and the decision about whether it would have been filed at all.
 

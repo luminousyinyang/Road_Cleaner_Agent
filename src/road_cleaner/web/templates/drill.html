@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Drill — Road Cleaner{% endblock %}
+
+{# The drill gets a page of its own rather than a slot on the front door.
+
+   It was on the front door twice and removed twice, for a reason worth keeping:
+   that page is a library of hazards the fleet actually found, and a text box
+   that invents one is a different product sitting in the middle of it. The
+   objection was never to the drill — it was to mixing the two.
+
+   On its own page it can say plainly what it is: a way to watch the four agents
+   run end to end without waiting for a real mattress to fall off a real truck. #}
+
+{% block content %}
+<div class="wrap">
+  <div class="dash__intro">
+    <h1 class="dash__title">Watch the fleet work.</h1>
+    <p class="dash__lede">
+      The <a href="/">road log</a> shows hazards the fleet has already found. This
+      runs it in front of you instead. Describe a hazard, drop a pin anywhere in
+      the lower 48, and the same four agents that read a traffic camera will
+      stage it, look twice, decide whether it is worth reporting, work out whose
+      road it is, and write the report.
+    </p>
+    <p class="dash__lede">
+      <strong>Then it stops.</strong> A drill case is marked synthetic, kept out
+      of the statistics, invisible to the Auditor, and the Dispatcher raises
+      rather than files if anything tries to send one. The Send button is there,
+      and it cannot be pressed.
+    </p>
+  </div>
+</div>
+
+{% include "partials/drill.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/drill.js?v={{ v }}" defer></script>
+{% endblock %}
