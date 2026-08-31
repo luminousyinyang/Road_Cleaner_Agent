@@ -144,6 +144,24 @@ class TestPages:
         """A page nobody can find is a page nobody demos."""
         assert 'href="/drill"' in client.get("/").text
 
+    def test_the_drill_offers_the_veo_render(self, client):
+        """Without it the model reads flat rectangles, which demos nothing.
+
+        `full` renders the clip with Veo *and* pulls the stills the model
+        analyses out of it. The page never sent that flag, so every run took
+        the degraded path and the "evidence" a report carried was two coloured
+        shapes. The control has to exist for the drill to be worth watching.
+        """
+        from pathlib import Path
+
+        body = client.get("/drill").text
+        assert 'id="drill-video"' in body
+        js = (
+            Path(__file__).resolve().parents[2]
+            / "src/road_cleaner/web/static/js/drill.js"
+        ).read_text()
+        assert "full:" in js, "drill.js must send `full` or the render never happens"
+
     def test_the_drill_page_says_it_cannot_file(self, client):
         """The refusal is the point, so the page makes it before the run starts.
 

@@ -35,6 +35,10 @@
   const errorEl = document.getElementById("drill-error");
   const outEl = document.getElementById("drill-out");
   const framesEl = document.getElementById("drill-frames");
+  const clipEl = document.getElementById("drill-clip");
+  // What the frame strip is currently showing, so a poll that carries the same
+  // list again does not rebuild it and one that carries a different list does.
+  let paintedFrames = "";
 
   const POLL_MS = 900;
   let timer = null;
@@ -57,6 +61,12 @@
     errorEl.hidden = true;
     outEl.hidden = true;
     framesEl.replaceChildren();
+    paintedFrames = "";
+    if (clipEl) {
+      clipEl.hidden = true;
+      clipEl.dataset.src = "";
+      clipEl.querySelector("video").removeAttribute("src");
+    }
     stagesEl.hidden = false;
     resetStages();
 
@@ -136,19 +146,45 @@
 
     // The staged frames are worth showing as soon as they exist: they are what
     // the vision model is about to be asked about.
-    if (result.frame_urls && result.frame_urls.length && !framesEl.childElementCount) {
-      result.frame_urls.forEach((url, i) => {
-        const figure = document.createElement("figure");
-        figure.className = "drill__frame";
-        const img = document.createElement("img");
-        img.src = url;
-        img.alt = i === 0 ? "First sighting" : "Confirmation";
-        img.loading = "lazy";
-        const cap = document.createElement("figcaption");
-        cap.textContent = i === 0 ? "First sighting" : "Confirmation, 4 min later";
-        figure.append(img, cap);
-        framesEl.appendChild(figure);
-      });
+    //
+    // Repainted when the list *changes*, not once. The old guard was
+    // `!framesEl.childElementCount` -- paint only into an empty container --
+    // which locked in whatever the first poll happened to carry. With Veo on
+    // that is the flat scene renders from the staging step, and the run then
+    // replaces `frame_urls` with stills cut from the generated clip. The page
+    // kept showing the rectangles while the model was reading real footage.
+    const urls = result.frame_urls || [];
+    if (urls.length && urls.join("|") !== paintedFrames) {
+      paintedFrames = urls.join("|");
+      framesEl.replaceChildren(
+        ...urls.map((url, i) => {
+          const figure = document.createElement("figure");
+          figure.className = "drill__frame";
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = i === 0 ? "First sighting" : "A later look";
+          img.loading = "lazy";
+          const cap = document.createElement("figcaption");
+          // The count is not fixed: two staged renders, or every still cut out
+          // of the clip. Numbering them beats claiming a gap that isn't there.
+          cap.textContent =
+            urls.length > 2
+              ? `Still ${i + 1} of ${urls.length}`
+              : i === 0
+                ? "First sighting"
+                : "Confirmation, 4 min later";
+          figure.append(img, cap);
+          return figure;
+        })
+      );
+    }
+
+    // The clip itself, once there is one. Generating footage and then never
+    // showing it is the thing this page was doing wrong.
+    if (result.clip_url && clipEl && clipEl.dataset.src !== result.clip_url) {
+      clipEl.dataset.src = result.clip_url;
+      clipEl.hidden = false;
+      clipEl.querySelector("video").src = result.clip_url;
     }
   }
 

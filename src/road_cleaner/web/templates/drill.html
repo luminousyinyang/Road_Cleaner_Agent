@@ -16,6 +16,13 @@
    horizontal margin from this container, so without it the input and the map
    run edge to edge on a narrow screen. #}
 
+{# Leaflet, for the pin picker. The partial renders a map container and
+   `map.js` fills it; without these two the page showed an empty bordered box
+   where the map should be, which is worse than having no picker at all. #}
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
 {% block content %}
 <div class="wrap">
   {% include "partials/drill.html" %}
@@ -23,5 +30,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+<script src="/static/js/map.js?v={{ v }}" defer></script>
 <script src="/static/js/drill.js?v={{ v }}" defer></script>
 {% endblock %}

@@ -915,6 +915,23 @@ button.btn[disabled] { opacity: 0.45; cursor: not-allowed; }
   background: var(--card); border: 1px solid var(--rule-2); border-radius: 3px;
 }
 .drill__input:focus { outline: 2px solid var(--forest); outline-offset: -1px; }
+/* The generated clip, above the stills cut out of it. */
+.drill__clip { margin: 22px 0 0; }
+.drill__clip video {
+  width: 100%;
+  max-width: 720px;
+  display: block;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+}
+.drill__clip figcaption {
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  max-width: 720px;
+}
+
 /* The Veo toggle. On by default where the provider allows it, because a drill
    reading flat rectangles demonstrates the plumbing and nothing else. */
 .drill__opt {

@@ -84,6 +84,18 @@
 
   <p class="drill__error" id="drill-error" hidden></p>
 
+  {# The generated clip. Hidden until there is one, because the run only makes
+     footage when the Veo box is ticked -- and a permanently empty video frame
+     is worse than none. The stills below are cut out of this, which is the
+     thing worth seeing: the model read these pictures, not a diagram. #}
+  <figure class="drill__clip" id="drill-clip" hidden data-src="">
+    <video controls playsinline preload="metadata"></video>
+    <figcaption>
+      Generated with Veo · the stills below are cut from it, and they are what
+      the model analysed
+    </figcaption>
+  </figure>
+
   <div class="drill__out" id="drill-out" hidden>
     <div class="drill__frames" id="drill-frames"></div>
 
